@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { FileText, ChevronLeft, BookOpen, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubjects, useSummaries, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
 import { canAccessSummaries, isUserActive } from "@/services/accessService";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
+import { supabase } from "@/lib/supabase";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function ResumosPage() {
   const { user } = useAuth();
@@ -14,9 +16,87 @@ export default function ResumosPage() {
   const courseId = user?.courseId ? String(user.courseId) : null;
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: summaries = [], isLoading: loadingSum } = useSummaries();
+  const qc = useQueryClient();
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedSummaryId, setSelectedSummaryId] = useState<string | null>(null);
+  const [viewedSummaryIds, setViewedSummaryIds] = useState<Set<string>>(new Set());
+
+  // Carregar resumos já visualizados do banco
+  useEffect(() => {
+    if (user?.id) {
+      const loadViewedSummaries = async () => {
+        const { data } = await supabase
+          .from('user_summary_views')
+          .select('summary_id')
+          .eq('user_id', user.id);
+        
+        if (data) {
+          setViewedSummaryIds(new Set(data.map((v: any) => v.summary_id)));
+        }
+      };
+      loadViewedSummaries();
+    }
+  }, [user?.id]);
+
+  const updateMissionProgress = async (userId: string, summaryId: string) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Registrar visualização do resumo
+      await supabase.from('user_summary_views').upsert({
+        user_id: userId,
+        summary_id: summaryId,
+        viewed_date: today,
+      }, {
+        onConflict: 'user_id,summary_id',
+      });
+      
+      // Atualizar missão
+      const { data: mission } = await supabase
+        .from('daily_missions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('mission_date', today)
+        .maybeSingle();
+
+      if (mission && mission.status !== 'completed') {
+        const newSummaryCompleted = (mission.summary_completed || 0) + 1;
+        const updates: Record<string, any> = {
+          summary_completed: newSummaryCompleted,
+          updated_at: new Date().toISOString(),
+        };
+        if (mission.status === 'pending') {
+          updates.status = 'in_progress';
+          updates.started_at = new Date().toISOString();
+        }
+        
+        // Verificar se todas as etapas foram concluídas (considerando > 0)
+        const questionsTarget = mission.questions_count || 0;
+        const flashcardsTarget = mission.flashcards_count || 0;
+        const summaryTarget = mission.summary_count || 0;
+        
+        const allQuestionsDone = questionsTarget === 0 || (mission.questions_completed || 0) >= questionsTarget;
+        const allFlashcardsDone = flashcardsTarget === 0 || (mission.flashcards_completed || 0) >= flashcardsTarget;
+        const allSummariesDone = summaryTarget === 0 || newSummaryCompleted >= summaryTarget;
+        
+        if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
+          updates.status = 'completed';
+          updates.completed_at = new Date().toISOString();
+          console.log('[Resumos] Missão completada!');
+        }
+        
+        await supabase
+          .from('daily_missions')
+          .update(updates)
+          .eq('id', mission.id);
+        qc.invalidateQueries({ queryKey: ['daily-mission'] });
+        qc.invalidateQueries({ queryKey: ['userStreakStats'] });
+      }
+    } catch (e) {
+      console.error('[Resumos] Erro ao atualizar missão:', e);
+    }
+  };
 
   if (loadingSub || loadingSum) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando resumos...</div></AppLayout>;
@@ -49,11 +129,16 @@ export default function ResumosPage() {
   }
 
   const handleSelectSummary = (id: string) => {
-    if (!user?.isApproved && !viewedSummaries.includes(id)) {
-      if (readCount >= 2) return; // Prevent opening if limit reached, though UI covers it
-      viewedSummaries.push(id);
-      localStorage.setItem(`viewed_summaries_${user?.id}`, JSON.stringify(viewedSummaries));
+    const isNewlyViewed = !viewedSummaryIds.has(id) && !viewedSummaries.includes(id);
+    
+    if (!user?.isApproved && isNewlyViewed) {
+      if (readCount >= 2) return;
     }
+    
+    if (isNewlyViewed && user?.id) {
+      updateMissionProgress(user.id, id);
+    }
+    
     setSelectedSummaryId(id);
   };
 

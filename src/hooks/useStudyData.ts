@@ -334,6 +334,51 @@ export function useRecordAnswer() {
         }
       }
 
+      // Update mission progress
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: mission } = await supabase
+          .from('daily_missions')
+          .select('*')
+          .eq('user_id', vars.userId)
+          .eq('mission_date', today)
+          .maybeSingle();
+
+        if (mission && mission.status !== 'completed') {
+          const newQuestionsCompleted = (mission.questions_completed || 0) + 1;
+          const updates: Record<string, any> = {
+            questions_completed: newQuestionsCompleted,
+            updated_at: new Date().toISOString(),
+          };
+          if (mission.status === 'pending') {
+            updates.status = 'in_progress';
+            updates.started_at = new Date().toISOString();
+          }
+          
+          // Verificar se todas as etapas foram concluídas (considerando > 0)
+          const questionsTarget = mission.questions_count || 0;
+          const flashcardsTarget = mission.flashcards_count || 0;
+          const summaryTarget = mission.summary_count || 0;
+          
+          const allQuestionsDone = questionsTarget === 0 || newQuestionsCompleted >= questionsTarget;
+          const allFlashcardsDone = flashcardsTarget === 0 || (mission.flashcards_completed || 0) >= flashcardsTarget;
+          const allSummariesDone = summaryTarget === 0 || (mission.summary_completed || 0) >= summaryTarget;
+          
+          if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
+            updates.status = 'completed';
+            updates.completed_at = new Date().toISOString();
+            console.log('[useRecordAnswer] Missão completada!');
+          }
+          
+          await supabase
+            .from('daily_missions')
+            .update(updates)
+            .eq('id', mission.id);
+        }
+      } catch (e) {
+        console.error('[useRecordAnswer] Erro ao atualizar missão:', e);
+      }
+
       // Check achievements
       console.log('[useRecordAnswer] Verificando conquistas...');
       try {
@@ -448,6 +493,7 @@ export function useRecordAnswer() {
       qc.invalidateQueries({ queryKey: ['userProductivity'] });
       qc.invalidateQueries({ queryKey: ['userQuestionStats'] });
       qc.invalidateQueries({ queryKey: ['userAchievements'] });
+      qc.invalidateQueries({ queryKey: ['daily-mission'] });
     },
   });
 }
@@ -561,6 +607,51 @@ export function useRecordFlashcardReview() {
         }
       }
 
+      // Update mission progress for flashcards
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: mission } = await supabase
+          .from('daily_missions')
+          .select('*')
+          .eq('user_id', vars.userId)
+          .eq('mission_date', today)
+          .maybeSingle();
+
+        if (mission && mission.status !== 'completed') {
+          const newFlashcardsCompleted = (mission.flashcards_completed || 0) + 1;
+          const updates: Record<string, any> = {
+            flashcards_completed: newFlashcardsCompleted,
+            updated_at: new Date().toISOString(),
+          };
+          if (mission.status === 'pending') {
+            updates.status = 'in_progress';
+            updates.started_at = new Date().toISOString();
+          }
+          
+          // Verificar se todas as etapas foram concluídas (considerando > 0)
+          const questionsTarget = mission.questions_count || 0;
+          const flashcardsTarget = mission.flashcards_count || 0;
+          const summaryTarget = mission.summary_count || 0;
+          
+          const allQuestionsDone = questionsTarget === 0 || (mission.questions_completed || 0) >= questionsTarget;
+          const allFlashcardsDone = flashcardsTarget === 0 || newFlashcardsCompleted >= flashcardsTarget;
+          const allSummariesDone = summaryTarget === 0 || (mission.summary_completed || 0) >= summaryTarget;
+          
+          if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
+            updates.status = 'completed';
+            updates.completed_at = new Date().toISOString();
+            console.log('[useRecordFlashcardReview] Missão completada!');
+          }
+          
+          await supabase
+            .from('daily_missions')
+            .update(updates)
+            .eq('id', mission.id);
+        }
+      } catch (e) {
+        console.error('[useRecordFlashcardReview] Erro ao atualizar missão:', e);
+      }
+
       // Check achievements for flashcards
       console.log('[useRecordFlashcardReview] Verificando conquistas...');
       try {
@@ -662,6 +753,7 @@ export function useRecordFlashcardReview() {
       qc.invalidateQueries({ queryKey: ['userProductivity'] });
       qc.invalidateQueries({ queryKey: ['flashcards'] });
       qc.invalidateQueries({ queryKey: ['userAchievements'] });
+      qc.invalidateQueries({ queryKey: ['daily-mission'] });
     },
   });
 }

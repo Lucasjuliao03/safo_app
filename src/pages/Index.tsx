@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { Flame, Zap, Target, ChevronRight, TrendingUp, BookOpen, Layers, AlertTriangle, FileText, GraduationCap } from "lucide-react";
+import { Flame, Zap, Target, BookOpen, Layers, AlertTriangle, FileText, GraduationCap, Calendar, Trophy } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { buildStats, getSubjectPerformance, ranks } from "@/services/statsService";
+import { buildStats, ranks } from "@/services/statsService";
 import { isUserActive, canAccessContent, getRemainingUsage } from "@/services/accessService";
 import { useSubjects, useQuestions, useUserProfile, useUserProductivity, useUserQuestionStats, useCourses } from "@/hooks/useStudyData";
+import { NextMissionCard } from "@/components/NextMissionCard";
+import { useDailyMission } from "@/hooks/useMission";
+import { useUserStreakStats } from "@/hooks/useUserStreakStats";
 
 export default function HomePage() {
   const { user, isApproved, isAdmin } = useAuth();
@@ -18,11 +20,22 @@ export default function HomePage() {
   const { data: profile } = useUserProfile(user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [] } = useUserQuestionStats(user?.id);
+  const { data: streakStats } = useUserStreakStats(user?.id);
+
+  // Hook de missão diária
+  const {
+    mission,
+    isLoading: isLoadingMission,
+    progress,
+    nextStep,
+    isCompleted,
+    hasStarted,
+    startMission,
+  } = useDailyMission(user?.id as string | undefined);
 
   const course = courses.find((c) => c.id === courseId);
 
   const stats = buildStats(profile, todayProd);
-  const performance = !isLoadingQ && !isLoadingSub ? getSubjectPerformance(qStats, questions, subjects) : [];
   const answeredCount = todayProd?.questions_answered ?? 0;
   const flashcardsCount = todayProd?.flashcards_reviewed ?? 0;
   const totalUsage = answeredCount + flashcardsCount;
@@ -76,16 +89,30 @@ export default function HomePage() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
+          {/* Card de Sequência - Atualizado */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Sequência</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-accent animate-streak-fire">{stats.streak}</span>
+                  <span className="text-4xl font-black text-accent animate-streak-fire">{streakStats?.currentStreak ?? stats.streak}</span>
                   <span className="text-sm font-semibold text-accent">dias</span>
                 </div>
               </div>
               <Flame className="h-12 w-12 text-accent opacity-80" strokeWidth={1.5} />
+            </div>
+            {/* Info adicional */}
+            <div className="mt-2 pt-2 border-t border-accent/20">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Trophy className="h-3 w-3" />
+                  <span>Melhor: {streakStats?.currentStreak ?? stats.streak}</span>
+                </div>
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span>Total: {streakStats?.totalDays ?? 0}</span>
+                </div>
+              </div>
             </div>
           </div>
           <div className="rounded-2xl bg-gradient-to-br from-xp/20 to-xp/5 border border-xp/20 p-4">
@@ -130,19 +157,41 @@ export default function HomePage() {
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-muted-foreground">Questões</span>
-                <span className="font-medium text-foreground">{stats.dailyGoal.questionsCompleted}/{stats.dailyGoal.questionsTarget}</span>
+                <span className="font-medium text-foreground">
+                  {Math.min(stats.dailyGoal.questionsCompleted, stats.dailyGoal.questionsTarget)}/{stats.dailyGoal.questionsTarget}
+                </span>
               </div>
-              <Progress value={(stats.dailyGoal.questionsCompleted / stats.dailyGoal.questionsTarget) * 100} className="h-2 bg-muted [&>div]:bg-primary" />
+              <Progress 
+                value={Math.min((stats.dailyGoal.questionsCompleted / stats.dailyGoal.questionsTarget) * 100, 100)} 
+                className="h-2 bg-muted [&>div]:bg-primary" 
+              />
             </div>
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-muted-foreground">Flashcards</span>
-                <span className="font-medium text-foreground">{stats.dailyGoal.flashcardsCompleted}/{stats.dailyGoal.flashcardsTarget}</span>
+                <span className="font-medium text-foreground">
+                  {Math.min(stats.dailyGoal.flashcardsCompleted, stats.dailyGoal.flashcardsTarget)}/{stats.dailyGoal.flashcardsTarget}
+                </span>
               </div>
-              <Progress value={(stats.dailyGoal.flashcardsCompleted / stats.dailyGoal.flashcardsTarget) * 100} className="h-2 bg-muted [&>div]:bg-accent" />
+              <Progress 
+                value={Math.min((stats.dailyGoal.flashcardsCompleted / stats.dailyGoal.flashcardsTarget) * 100, 100)} 
+                className="h-2 bg-muted [&>div]:bg-accent" 
+              />
             </div>
           </div>
         </div>
+
+        <NextMissionCard
+          mission={mission}
+          isLoading={isLoadingMission}
+          progress={progress}
+          nextStep={nextStep}
+          isCompleted={isCompleted}
+          hasStarted={hasStarted}
+          onStart={startMission}
+          streakDays={streakStats?.currentStreak ?? stats.streak}
+          totalDays={streakStats?.totalDays ?? 0}
+        />
 
         <div className="grid grid-cols-3 gap-3">
           <Link to="/questoes" className="flex flex-col items-center gap-2 rounded-2xl bg-primary/10 border border-primary/20 p-4 transition-all active:scale-[0.97]">
@@ -157,37 +206,6 @@ export default function HomePage() {
             <FileText className="h-7 w-7 text-xp" />
             <p className="font-semibold text-foreground text-xs">Resumos</p>
           </Link>
-        </div>
-
-        <div className="rounded-2xl bg-card border border-border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-success" />
-              <h3 className="font-semibold text-foreground">Desempenho</h3>
-            </div>
-            <Link to="/perfil" className="text-xs text-primary font-medium flex items-center gap-0.5">
-              Ver tudo <ChevronRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-2.5">
-            {performance.slice(0, 4).map((sp) => {
-              const subject = subjects.find((s) => s.id === sp.subjectId);
-              return (
-                <div key={sp.subjectId} className="flex items-center gap-3">
-                  <span className="text-lg">{subject?.icon ?? "📖"}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-foreground font-medium truncate">{sp.name}</span>
-                      <span className={`font-bold ${sp.accuracy >= 70 ? "text-success" : sp.accuracy >= 50 ? "text-warning" : "text-destructive"}`}>
-                        {sp.totalAttempts > 0 ? `${sp.accuracy}%` : "—"}
-                      </span>
-                    </div>
-                    <Progress value={sp.accuracy} className="h-1.5 bg-muted [&>div]:transition-all" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
     </AppLayout>
