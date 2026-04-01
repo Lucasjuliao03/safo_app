@@ -52,6 +52,26 @@ export default function ResumosPage() {
         onConflict: 'user_id,summary_id',
       });
       
+      // Atualizar productivity do dia com resumo
+      const { data: prod } = await supabase
+        .from('user_daily_productivity')
+        .select('id, summaries_read')
+        .eq('user_id', userId)
+        .eq('productivity_date', today)
+        .maybeSingle();
+
+      if (prod) {
+        await supabase.from('user_daily_productivity').update({
+          summaries_read: (prod.summaries_read || 0) + 1,
+        }).eq('id', prod.id);
+      } else {
+        await supabase.from('user_daily_productivity').insert({
+          user_id: userId,
+          productivity_date: today,
+          summaries_read: 1,
+        });
+      }
+      
       // Atualizar missão
       const { data: mission } = await supabase
         .from('daily_missions')
@@ -92,6 +112,7 @@ export default function ResumosPage() {
           .eq('id', mission.id);
         qc.invalidateQueries({ queryKey: ['daily-mission'] });
         qc.invalidateQueries({ queryKey: ['userStreakStats'] });
+        qc.invalidateQueries({ queryKey: ['userProductivity'] });
       }
     } catch (e) {
       console.error('[Resumos] Erro ao atualizar missão:', e);

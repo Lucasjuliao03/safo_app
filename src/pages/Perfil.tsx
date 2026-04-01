@@ -2,10 +2,11 @@ import { AppLayout } from "@/components/AppLayout";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildStats, getSubjectPerformance, ranks } from "@/services/statsService";
-import { User, ChevronRight, Medal, Flame, Zap, LogOut, TrendingUp, Trophy } from "lucide-react";
+import { User, ChevronRight, Medal, Flame, Zap, LogOut, TrendingUp, Trophy, BookOpen, Layers, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useSubjects, useQuestions, useUserProfile, useUserProductivity, useUserQuestionStats } from "@/hooks/useStudyData";
 import { useAchievementStats } from "@/hooks/useAchievements";
+import { useUserStreakStats } from "@/hooks/useUserStreakStats";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { PerformanceCard } from "@/components/PerformanceCard";
 
@@ -17,6 +18,7 @@ export default function PerfilPage() {
   const { data: profile } = useUserProfile(user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [] } = useUserQuestionStats(user?.id);
+  const { data: streakStats } = useUserStreakStats(user?.id);
   const achievementStats = useAchievementStats(user?.id);
 
   const stats = buildStats(profile, todayProd);
@@ -135,19 +137,38 @@ export default function PerfilPage() {
           )}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-card border border-border p-3 text-center">
-            <Flame className="h-5 w-5 text-accent mx-auto mb-1" />
-            <p className="text-2xl font-bold text-foreground">{stats.streak}</p>
-            <p className="text-xs text-muted-foreground">Dias seguidos</p>
+        {/* Stats - 5 cards na mesma linha */}
+        <div className="grid grid-cols-5 gap-2">
+          <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
+            <Flame className="h-4 w-4 text-accent mx-auto mb-0.5" />
+            <p className="text-lg font-bold text-foreground leading-tight">{streakStats?.currentStreak ?? stats.streak}</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Sequência</p>
           </div>
-          <div className="rounded-xl bg-card border border-border p-3 text-center">
-            <TrendingUp className="h-5 w-5 text-success mx-auto mb-1" />
-            <p className="text-2xl font-bold text-foreground">
-              {todayProd ? `${todayProd.questions_answered}` : "0"}
+          <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
+            <TrendingUp className="h-4 w-4 text-accent mx-auto mb-0.5" />
+            <p className="text-lg font-bold text-foreground leading-tight">{streakStats?.totalDays ?? 0}</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Dias Total</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
+            <BookOpen className="h-4 w-4 text-accent mx-auto mb-0.5" />
+            <p className="text-lg font-bold text-foreground leading-tight">
+              {Math.min(todayProd?.questions_answered ?? 0, 99)}
             </p>
-            <p className="text-xs text-muted-foreground">Questões hoje</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Questões</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
+            <Layers className="h-4 w-4 text-accent mx-auto mb-0.5" />
+            <p className="text-lg font-bold text-foreground leading-tight">
+              {Math.min(todayProd?.flashcards_reviewed ?? 0, 99)}
+            </p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Flashcards</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
+            <FileText className="h-4 w-4 text-accent mx-auto mb-0.5" />
+            <p className="text-lg font-bold text-foreground leading-tight">
+              {Math.min(todayProd?.summaries_read ?? 0, 99)}
+            </p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Resumos</p>
           </div>
         </div>
 
