@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
-import { useServiceWorker } from "@/hooks/useServiceWorker";
 import Index from "./pages/Index";
 import Questoes from "./pages/Questoes";
 import Flashcards from "./pages/Flashcards";
@@ -32,7 +31,7 @@ const IntroScreen = ({ onFinish }: { onFinish: () => void }) => {
   return (
     <div 
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center cursor-pointer overflow-hidden p-4"
-      onClick={onFinish} // Tap to skip
+      onClick={onFinish}
     >
       <video 
         src="/intro.mp4" 
@@ -53,7 +52,6 @@ const AppRoutes = () => {
   const [introFinished, setIntroFinished] = useState(false);
 
   useEffect(() => {
-    // Only show intro once per browser session. Opening the PWA fresh starts a new session.
     const hasSeenIntro = sessionStorage.getItem("hasSeenIntro");
     if (hasSeenIntro) {
       setIntroFinished(true);
@@ -94,24 +92,20 @@ const AppRoutes = () => {
   );
 };
 
-const App = () => {
-  useServiceWorker();
-  
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-            <NotificationProvider>
-              <AppRoutes />
-            </NotificationProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-};
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AuthProvider>
+          <NotificationProvider>
+            <AppRoutes />
+          </NotificationProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;
