@@ -77,9 +77,12 @@ export function StudentEvolutionCard({ evolution, isLoading }: StudentEvolutionC
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-primary" />
-                <span className="text-sm text-muted-foreground">Prova em {evolution.examDate}:</span>
+                <span className="text-sm text-muted-foreground">Prova em:</span>
               </div>
-              <span className="text-lg font-bold text-primary">{evolution.daysUntilExam} dias</span>
+              <div className="text-right">
+                <span className="text-lg font-bold text-primary">{evolution.daysUntilExam} dias</span>
+                <span className="text-xs text-muted-foreground ml-2">({evolution.examDateFormatted})</span>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-warning">

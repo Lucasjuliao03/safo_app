@@ -22,6 +22,7 @@ export interface SubjectProgress {
 
 export interface StudentEvolution {
   examDate: string | null;
+  examDateFormatted: string | null;
   daysUntilExam: number | null;
   examPassed: boolean;
   questionsTotal: number;
@@ -56,6 +57,12 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
           .maybeSingle();
 
         const examDate = courseData?.exam_date ? courseData.exam_date.split('T')[0] : null;
+        const examDateFormatted = examDate 
+          ? (() => {
+              const [y, m, d] = examDate.split('-');
+              return `${d}/${m}/${y}`;
+            })()
+          : null;
         
         // Calcular dias até a prova
         let daysUntilExam: number | null = null;
@@ -264,6 +271,7 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
 
         return {
           examDate,
+          examDateFormatted,
           daysUntilExam,
           examPassed,
           questionsTotal,
@@ -291,6 +299,7 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
 function getEmptyEvolution(): StudentEvolution {
   return {
     examDate: null,
+    examDateFormatted: null,
     daysUntilExam: null,
     examPassed: false,
     questionsTotal: 0,
