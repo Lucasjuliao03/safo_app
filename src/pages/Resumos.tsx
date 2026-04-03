@@ -35,7 +35,7 @@ export default function ResumosPage() {
           .eq('user_id', user.id);
         
         if (data) {
-          setViewedSummaryIds(new Set(data.map((v: any) => v.summary_id)));
+          setViewedSummaryIds(new Set(data.map((v: any) => String(v.summary_id))));
         }
       };
       loadViewedSummaries();
@@ -114,8 +114,14 @@ export default function ResumosPage() {
           .update(updates)
           .eq('id', mission.id);
         qc.invalidateQueries({ queryKey: ['daily-mission'] });
-        qc.invalidateQueries({ queryKey: ['userStreakStats'] });
         qc.invalidateQueries({ queryKey: ['userProductivity'] });
+        qc.invalidateQueries({ queryKey: ['studentEvolution'] });
+        qc.invalidateQueries({ queryKey: ['summaries'] });
+      } else if (mission) {
+         // Mission exists but already completed, just invalidate evolution
+         qc.invalidateQueries({ queryKey: ['studentEvolution'] });
+      } else {
+         qc.invalidateQueries({ queryKey: ['studentEvolution'] });
       }
     } catch (e) {
       console.error('[Resumos] Erro ao atualizar missão:', e);
@@ -161,6 +167,7 @@ export default function ResumosPage() {
     
     if (isNewlyViewed && user?.id) {
       updateMissionProgress(user.id, id);
+      setViewedSummaryIds(prev => new Set([...prev, id]));
     }
     
     setSelectedSummaryId(id);
