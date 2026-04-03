@@ -51,7 +51,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
           {question.difficulty}
         </Badge>
         <Badge variant="outline" className="text-xs border-border text-muted-foreground">
-          {question.organ} · {question.year}
+          {question.board} · {question.year}
         </Badge>
       </div>
 

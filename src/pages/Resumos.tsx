@@ -24,6 +24,7 @@ export default function ResumosPage() {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedSummaryId, setSelectedSummaryId] = useState<string | null>(null);
   const [viewedSummaryIds, setViewedSummaryIds] = useState<Set<string>>(new Set());
+  const [viewedSummaryCounts, setViewedSummaryCounts] = useState<Map<string, number>>(new Map());
 
   // Carregar resumos já visualizados do banco
   useEffect(() => {
@@ -31,26 +32,30 @@ export default function ResumosPage() {
       const loadViewedSummaries = async () => {
         const { data } = await supabase
           .from('user_summary_views')
-          .select('summary_id')
+          .select('summary_id, read_count')
           .eq('user_id', user.id);
         
         if (data) {
           setViewedSummaryIds(new Set(data.map((v: any) => String(v.summary_id))));
+          const counts = new Map<string, number>();
+          data.forEach((v: any) => counts.set(String(v.summary_id), v.read_count || 1));
+          setViewedSummaryCounts(counts);
         }
       };
       loadViewedSummaries();
     }
   }, [user?.id]);
 
-  const updateMissionProgress = async (userId: string, summaryId: string) => {
+  const updateMissionProgress = async (userId: string, summaryId: string, currentCount: number) => {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // Registrar visualização do resumo
+      // Registrar visualização do resumo, incrementando a contagem de vezes lidas
       await supabase.from('user_summary_views').upsert({
         user_id: userId,
         summary_id: summaryId,
         viewed_date: today,
+        read_count: currentCount + 1,
       }, {
         onConflict: 'user_id,summary_id',
       });
@@ -134,16 +139,14 @@ export default function ResumosPage() {
 
   const active = isUserActive(user);
   
-  const viewedStr = localStorage.getItem(`viewed_summaries_${user?.id}`) || "[]";
-  const viewedSummaries: string[] = JSON.parse(viewedStr);
-  const readCount = viewedSummaries.length;
+  const readCount = viewedSummaryIds.size;
   const summaryLimitReached = !canAccessSummaries(user, readCount);
 
   if (!active) {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
   }
 
-  if (summaryLimitReached && !user?.isApproved && !selectedSummaryId) {
+  if (summaryLimitReached && !user?.isApproved) {
     return <AppLayout><BlockedOverlay readCount={readCount} reason="limit_reached" /></AppLayout>;
   }
 
@@ -159,15 +162,19 @@ export default function ResumosPage() {
   }
 
   const handleSelectSummary = (id: string) => {
-    const isNewlyViewed = !viewedSummaryIds.has(id) && !viewedSummaries.includes(id);
+    const isNewlyViewed = true; // Sempre contar cliques! Ou seja, atualizar o read_count na hora se o usuário acessou para estudar de novo.
     
-    if (!user?.isApproved && isNewlyViewed) {
+    // Bloquear limite de acessos apenas se for a primeira vez que ele abre (viewedSummaryIds.has(id))
+    if (!user?.isApproved && !viewedSummaryIds.has(id)) {
       if (readCount >= 2) return;
     }
     
-    if (isNewlyViewed && user?.id) {
-      updateMissionProgress(user.id, id);
+    if (user?.id) {
+      const currentCount = viewedSummaryCounts.get(id) || 0;
+      updateMissionProgress(user.id, id, currentCount);
+      // Update local optimistically
       setViewedSummaryIds(prev => new Set([...prev, id]));
+      setViewedSummaryCounts(prev => new Map(prev).set(id, currentCount + 1));
     }
     
     setSelectedSummaryId(id);
@@ -239,7 +246,7 @@ export default function ResumosPage() {
 
           <div className="space-y-2 mt-4">
             {topicSummaries.map(summary => {
-              const isViewed = viewedSummaryIds.has(summary.id) || viewedSummaries.includes(summary.id);
+              const isViewed = viewedSummaryIds.has(summary.id);
               
               return (
                 <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
@@ -250,8 +257,8 @@ export default function ResumosPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {summary.format === 'html' ? 'HTML' : summary.format === 'markdown' ? 'Markdown' : 'PDF'}
+                      <p className="text-xs text-muted-foreground mt-0.5 font-medium">
+                        {isViewed ? `Lido ${viewedSummaryCounts.get(summary.id) || 1} ${viewedSummaryCounts.get(summary.id) === 1 ? 'vez' : 'vezes'}` : 'Não lido'}
                       </p>
                     </div>
                   </div>
@@ -328,7 +335,7 @@ export default function ResumosPage() {
                 <p className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">Outros (Sem Tema Específico)</p>
                 <div className="space-y-2">
                   {floatingSummaries.map(summary => {
-                    const isViewed = viewedSummaryIds.has(summary.id) || viewedSummaries.includes(summary.id);
+                    const isViewed = viewedSummaryIds.has(summary.id);
                     return (
                       <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
                         className={cn("w-full flex items-center justify-between rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]", isViewed && "border-success/30 bg-success/5")}>
@@ -338,7 +345,9 @@ export default function ResumosPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{summary.format === 'markdown' ? 'Markdown' : 'O'}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 font-medium">
+                              {isViewed ? `Lido ${viewedSummaryCounts.get(summary.id) || 1} ${viewedSummaryCounts.get(summary.id) === 1 ? 'vez' : 'vezes'}` : 'Não lido'}
+                            </p>
                           </div>
                         </div>
                       </button>
