@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { FileText, ChevronLeft, BookOpen, CheckCircle } from "lucide-react";
+import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -184,7 +184,11 @@ export default function ResumosPage() {
 
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-              {subject?.icon ?? "📖"} {subject?.name ?? "Geral"}
+              {subject && (() => {
+                const SubjectIcon = subject.icon;
+                return SubjectIcon ? <SubjectIcon className="h-3.5 w-3.5 inline mr-1" /> : null;
+              })()}
+              {subject?.name ?? "Geral"}
             </Badge>
           </div>
 
@@ -221,7 +225,10 @@ export default function ResumosPage() {
           </button>
 
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{subject?.icon ?? "📖"}</span>
+            {(() => {
+              const SubjectIcon = subject?.icon;
+              return SubjectIcon ? <SubjectIcon className="h-6 w-6" /> : <BookOpenIcon className="h-6 w-6" />;
+            })()}
             <h1 className="text-xl font-bold text-foreground">{subject?.name ?? "Resumos"}</h1>
           </div>
 
@@ -261,14 +268,15 @@ export default function ResumosPage() {
 
         <div className="space-y-3">
           {subjectsWithSummaries.map(subject => {
+            const IconComponent = SUBJECT_UI_MAP[subject.name]?.icon || BookOpenIcon;
+            const color = SUBJECT_UI_MAP[subject.name]?.color || "hsl(217 91% 60%)";
             const count = summaries.filter(s => s.subjectId === subject.id).length;
-            const ui = SUBJECT_UI_MAP[subject.name] || { icon: "📖", color: "hsl(217 91% 60%)" };
             return (
               <button key={subject.id} onClick={() => setSelectedSubjectId(subject.id)}
                 className="w-full flex items-center gap-4 rounded-2xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
-                  style={{ background: `${ui.color}15`, border: `1px solid ${ui.color}30` }}>
-                  {ui.icon}
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl"
+                  style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                  <IconComponent className="h-6 w-6" style={{ color }} />
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-foreground">{subject.name}</p>

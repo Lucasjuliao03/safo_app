@@ -1,7 +1,7 @@
 export interface Subject {
   id: string;
   name: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   questionCount: number;
   color: string;
 }

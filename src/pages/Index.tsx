@@ -9,6 +9,8 @@ import { useSubjects, useQuestions, useUserProfile, useUserProductivity, useUser
 import { NextMissionCard } from "@/components/NextMissionCard";
 import { useDailyMission } from "@/hooks/useMission";
 import { useUserStreakStats } from "@/hooks/useUserStreakStats";
+import { StudentEvolutionCard } from "@/components/StudentEvolutionCard";
+import { useStudentEvolution } from "@/hooks/useStudentEvolution";
 
 export default function HomePage() {
   const { user, isApproved, isAdmin } = useAuth();
@@ -21,6 +23,12 @@ export default function HomePage() {
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [] } = useUserQuestionStats(user?.id);
   const { data: streakStats } = useUserStreakStats(user?.id);
+
+  // Hook de evolução do aluno
+  const { data: evolution, isLoading: isLoadingEvolution } = useStudentEvolution(
+    user?.id, 
+    courseId || (profile as any)?.course_id ? String((profile as any)?.course_id || courseId) : null
+  );
 
   // Hook de missão diária
   const {
@@ -148,38 +156,25 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Target className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold text-foreground">Meta Diária</h3>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Questões</span>
-                <span className="font-medium text-foreground">
-                  {Math.min(stats.dailyGoal.questionsCompleted, stats.dailyGoal.questionsTarget)}/{stats.dailyGoal.questionsTarget}
-                </span>
-              </div>
-              <Progress 
-                value={Math.min((stats.dailyGoal.questionsCompleted / stats.dailyGoal.questionsTarget) * 100, 100)} 
-                className="h-2 bg-muted [&>div]:bg-primary" 
-              />
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Flashcards</span>
-                <span className="font-medium text-foreground">
-                  {Math.min(stats.dailyGoal.flashcardsCompleted, stats.dailyGoal.flashcardsTarget)}/{stats.dailyGoal.flashcardsTarget}
-                </span>
-              </div>
-              <Progress 
-                value={Math.min((stats.dailyGoal.flashcardsCompleted / stats.dailyGoal.flashcardsTarget) * 100, 100)} 
-                className="h-2 bg-muted [&>div]:bg-accent" 
-              />
-            </div>
-          </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Link to="/questoes" className="flex flex-col items-center gap-1.5 rounded-xl bg-primary/10 border border-primary/20 p-3 transition-all active:scale-[0.97]">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <p className="font-semibold text-foreground text-[10px]">Questões</p>
+          </Link>
+          <Link to="/flashcards" className="flex flex-col items-center gap-1.5 rounded-xl bg-accent/10 border border-accent/20 p-3 transition-all active:scale-[0.97]">
+            <Layers className="h-5 w-5 text-accent" />
+            <p className="font-semibold text-foreground text-[10px]">Flashcards</p>
+          </Link>
+          <Link to="/resumos" className="flex flex-col items-center gap-1.5 rounded-xl bg-xp/10 border border-xp/20 p-3 transition-all active:scale-[0.97]">
+            <FileText className="h-5 w-5 text-xp" />
+            <p className="font-semibold text-foreground text-[10px]">Resumos</p>
+          </Link>
         </div>
+
+        <StudentEvolutionCard
+          evolution={evolution}
+          isLoading={isLoadingEvolution}
+        />
 
         <NextMissionCard
           mission={mission}
@@ -192,21 +187,6 @@ export default function HomePage() {
           streakDays={streakStats?.currentStreak ?? stats.streak}
           totalDays={streakStats?.totalDays ?? 0}
         />
-
-        <div className="grid grid-cols-3 gap-3">
-          <Link to="/questoes" className="flex flex-col items-center gap-2 rounded-2xl bg-primary/10 border border-primary/20 p-4 transition-all active:scale-[0.97]">
-            <BookOpen className="h-7 w-7 text-primary" />
-            <p className="font-semibold text-foreground text-xs">Questões</p>
-          </Link>
-          <Link to="/flashcards" className="flex flex-col items-center gap-2 rounded-2xl bg-accent/10 border border-accent/20 p-4 transition-all active:scale-[0.97]">
-            <Layers className="h-7 w-7 text-accent" />
-            <p className="font-semibold text-foreground text-xs">Flashcards</p>
-          </Link>
-          <Link to="/resumos" className="flex flex-col items-center gap-2 rounded-2xl bg-xp/10 border border-xp/20 p-4 transition-all active:scale-[0.97]">
-            <FileText className="h-7 w-7 text-xp" />
-            <p className="font-semibold text-foreground text-xs">Resumos</p>
-          </Link>
-        </div>
       </div>
     </AppLayout>
   );

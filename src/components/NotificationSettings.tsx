@@ -1,197 +1,100 @@
 import { useState } from 'react';
-import { useNotifications } from '@/hooks/useNotifications';
-import { Bell, BellOff, Clock, Flame, Trophy, BarChart3, ChevronRight } from 'lucide-react';
+import { useNotificationContext } from '@/contexts/NotificationContext';
+import { Bell, BellOff, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export function NotificationSettings() {
-  const notifications = useNotifications();
+  const { webPush } = useNotificationContext();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const handleToggle = async (key: keyof typeof notifications.settings) => {
-    if (key === 'enabled') {
-      if (!notifications.settings.enabled) {
-        const granted = await notifications.requestPermission();
-        if (!granted) {
-          toast.error('Permissão de notificação negada');
-          return;
-        }
-        toast.success('Notificações ativadas!');
+  const handlePushToggle = async () => {
+    if (webPush.isSubscribed) {
+      const success = await webPush.unsubscribe();
+      if (success) {
+        toast.success('Push notifications desativadas');
+      } else {
+        toast.error('Erro ao desativar push');
       }
-      notifications.saveSettings({
-        ...notifications.settings,
-        enabled: !notifications.settings.enabled,
-      });
     } else {
-      notifications.saveSettings({
-        ...notifications.settings,
-        [key]: !notifications.settings[key as keyof typeof notifications.settings],
-      });
+      const success = await webPush.subscribe();
+      if (success) {
+        toast.success('Push notifications ativadas! 🔔');
+      } else {
+        toast.error(
+          'Não foi possível ativar. Verifique se o navegador permite notificações para este site.'
+        );
+      }
     }
   };
 
-  const handleTimeChange = (time: string) => {
-    notifications.saveSettings({
-      ...notifications.settings,
-      dailyReminderTime: time,
-    });
-  };
-
-  if (!notifications.isSupported) {
-    return (
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <p className="text-sm text-muted-foreground text-center">
-          Notificações não são suportadas neste navegador.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3">
+    <div className="rounded-2xl bg-card border border-border overflow-hidden">
+      {/* Header expandível */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 rounded-2xl bg-card border border-border hover:border-primary/40 transition-all"
+        className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "w-10 h-10 rounded-xl flex items-center justify-center",
-            notifications.settings.enabled 
-              ? "bg-primary/15 text-primary" 
-              : "bg-muted text-muted-foreground"
-          )}>
-            {notifications.settings.enabled ? (
-              <Bell className="h-5 w-5" />
-            ) : (
-              <BellOff className="h-5 w-5" />
-            )}
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Bell className="h-4 w-4 text-primary" />
           </div>
           <div className="text-left">
-            <p className="font-semibold text-foreground">Notificações</p>
-            <p className="text-xs text-muted-foreground">
-              {notifications.settings.enabled ? 'Ativadas' : 'Desativadas'}
+            <p className="text-sm font-semibold text-foreground">Notificações Push</p>
+            <p className="text-[10px] text-muted-foreground">
+              {webPush.isSubscribed
+                ? '✅ Ativadas — você recebe alertas mesmo com app fechado'
+                : '⚠️ Desativadas — ative para receber lembretes'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            "text-xs font-medium px-2 py-1 rounded-full",
-            notifications.permission === 'granted' 
-              ? "bg-success/15 text-success" 
-              : notifications.permission === 'denied'
-              ? "bg-destructive/15 text-destructive"
-              : "bg-warning/15 text-warning"
-          )}>
-            {notifications.permission === 'granted' ? 'OK' : 
-             notifications.permission === 'denied' ? 'Bloqueado' : 'Pendente'}
-          </span>
-          <ChevronRight className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            isExpanded && "rotate-90"
-          )} />
-        </div>
+        <ChevronRight
+          className={cn(
+            'h-4 w-4 text-muted-foreground transition-transform',
+            isExpanded && 'rotate-90'
+          )}
+        />
       </button>
 
       {isExpanded && (
-        <div className="space-y-3 pl-2 animate-slide-down">
-          <ToggleOption
-            icon={Bell}
-            label="Lembrete Diário"
-            description="Receba um lembrete para estudar"
-            checked={notifications.settings.dailyReminder}
-            onChange={() => handleToggle('dailyReminder')}
-          />
+        <div className="space-y-3 px-4 pb-4 animate-slide-down">
+          {/* Botão principal de ativar/desativar push */}
+          <button
+            onClick={handlePushToggle}
+            disabled={webPush.isLoading}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold text-sm transition-all active:scale-[0.98]',
+              webPush.isSubscribed
+                ? 'bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive/20'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+              webPush.isLoading && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            {webPush.isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : webPush.isSubscribed ? (
+              <>
+                <BellOff className="h-4 w-4" />
+                Desativar Push Notifications
+              </>
+            ) : (
+              <>
+                <Bell className="h-4 w-4" />
+                Ativar Push Notifications
+              </>
+            )}
+          </button>
 
-          {notifications.settings.dailyReminder && (
-            <div className="pl-8 pr-4 py-2">
-              <label className="text-xs text-muted-foreground mb-1 block">
-                Horário do lembrete
-              </label>
-              <input
-                type="time"
-                value={notifications.settings.dailyReminderTime}
-                onChange={(e) => handleTimeChange(e.target.value)}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </div>
-          )}
-
-          <ToggleOption
-            icon={Flame}
-            label="Alerta de Streak"
-            description="Avise quando seu streak estiver em risco"
-            checked={notifications.settings.streakAlert}
-            onChange={() => handleToggle('streakAlert')}
-          />
-
-          <ToggleOption
-            icon={Trophy}
-            label="Conquistas"
-            description="Notifique ao desbloquear medalhas"
-            checked={notifications.settings.achievementAlert}
-            onChange={() => handleToggle('achievementAlert')}
-          />
-
-          <ToggleOption
-            icon={BarChart3}
-            label="Relatório Semanal"
-            description="Resumo do seu progresso"
-            checked={notifications.settings.weeklyReport}
-            onChange={() => handleToggle('weeklyReport')}
-          />
-
-          {notifications.permission === 'denied' && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-              <p className="text-xs text-destructive">
-                ⚠️ Notificações bloqueadas. Para ativar, vá nas configurações do navegador e permita notificações para este site.
+          {/* Info se não suportado */}
+          {!webPush.isSupported && (
+            <div className="rounded-xl bg-warning/10 border border-warning/20 p-3 mt-3">
+              <p className="text-xs text-warning font-medium">
+                Seu navegador não suporta Push Notifications. Use Chrome, Edge ou Firefox para ativar.
               </p>
             </div>
           )}
         </div>
       )}
     </div>
-  );
-}
-
-function ToggleOption({
-  icon: Icon,
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  icon: typeof Bell;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-}) {
-  return (
-    <button
-      onClick={onChange}
-      className="w-full flex items-center justify-between p-3 rounded-xl bg-card border border-border hover:border-primary/30 transition-all active:scale-[0.98]"
-    >
-      <div className="flex items-center gap-3">
-        <div className={cn(
-          "w-9 h-9 rounded-lg flex items-center justify-center",
-          checked ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-        )}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="text-left">
-          <p className="text-sm font-medium text-foreground">{label}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <div className={cn(
-        "w-11 h-6 rounded-full transition-all relative",
-        checked ? "bg-primary" : "bg-muted"
-      )}>
-        <div className={cn(
-          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
-          checked ? "left-6" : "left-1"
-        )} />
-      </div>
-    </button>
   );
 }

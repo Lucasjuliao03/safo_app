@@ -1,19 +1,19 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Question } from "@/types/study";
-import { CheckCircle2, XCircle, ChevronRight, Filter, BookOpen } from "lucide-react";
+import { CheckCircle2, XCircle, ChevronRight, Filter, BookOpen, BookOpenIcon, Sparkles, Building2, Shuffle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessContent, isUserActive } from "@/services/accessService";
-import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats } from "@/hooks/useStudyData";
+import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
 import { useMemo } from "react";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 
-function QuestionCard({ question, subjectName, subjectIcon, onNext, onAnswer }: {
+function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext, onAnswer }: {
   question: Question;
   subjectName?: string;
-  subjectIcon?: string;
+  subjectIcon?: React.ComponentType<{ className?: string }>;
   onNext: () => void;
   onAnswer: (isCorrect: boolean, selectedOption: string) => void;
 }) {
@@ -44,7 +44,8 @@ function QuestionCard({ question, subjectName, subjectIcon, onNext, onAnswer }: 
     <div className="space-y-4 animate-slide-up">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-          {subjectIcon} {subjectName}
+          {SubjectIcon && <SubjectIcon className="h-3.5 w-3.5 inline mr-1" />}
+          {subjectName}
         </Badge>
         <Badge variant="outline" className={cn("text-xs", difficultyColor[question.difficulty])}>
           {question.difficulty}
@@ -241,21 +242,30 @@ export default function QuestoesPage() {
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><Filter className="h-5 w-5 text-primary" /> Origem das Questões</h1>
             <p className="text-sm text-muted-foreground">Escolha o tipo de questão que deseja resolver agora.</p>
           </div>
-          <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
             <button onClick={() => setSelectedSource("ia")}
-              className="w-full p-4 rounded-xl bg-card border border-border text-left hover:border-primary/50 transition-all active:scale-[0.98]">
-              <h3 className="font-semibold text-sm text-foreground mb-1">Criadas por IA 🤖</h3>
-              <p className="text-xs text-muted-foreground">Questões inéditas geradas pela nossa Inteligência Artificial.</p>
+              className="flex flex-col items-center justify-center p-5 rounded-2xl bg-card border border-border text-center hover:border-primary/50 transition-all active:scale-[0.98]">
+              <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 mb-3">
+                <Sparkles className="h-7 w-7 text-primary" />
+              </div>
+              <h3 className="font-bold text-foreground text-base mb-1">IA</h3>
+              <p className="text-xs text-muted-foreground leading-tight">Questões geradas por Inteligência Artificial</p>
             </button>
             <button onClick={() => setSelectedSource("banca")}
-              className="w-full p-4 rounded-xl bg-card border border-border text-left hover:border-primary/50 transition-all active:scale-[0.98]">
-              <h3 className="font-semibold text-sm text-foreground mb-1">Questões da Banca 🏛️</h3>
-              <p className="text-xs text-muted-foreground">Questões reais extraídas de provas anteriores.</p>
+              className="flex flex-col items-center justify-center p-5 rounded-2xl bg-card border border-border text-center hover:border-primary/50 transition-all active:scale-[0.98]">
+              <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-accent/10 border border-accent/20 mb-3">
+                <Building2 className="h-7 w-7 text-accent" />
+              </div>
+              <h3 className="font-bold text-foreground text-base mb-1">BANCA</h3>
+              <p className="text-xs text-muted-foreground leading-tight">Questões reais de provas anteriores</p>
             </button>
             <button onClick={() => setSelectedSource("all")}
-              className="w-full p-4 rounded-xl bg-card border border-border text-left hover:border-primary/50 transition-all active:scale-[0.98]">
-              <h3 className="font-semibold text-sm text-foreground mb-1">Variadas (Ambas) 🔀</h3>
-              <p className="text-xs text-muted-foreground">Mistura de questões da Banca e criadas por IA.</p>
+              className="flex flex-col items-center justify-center p-5 rounded-2xl bg-card border border-border text-center hover:border-primary/50 transition-all active:scale-[0.98]">
+              <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-xp/10 border border-xp/20 mb-3">
+                <Shuffle className="h-7 w-7 text-xp" />
+              </div>
+              <h3 className="font-bold text-foreground text-base mb-1">VARIADAS</h3>
+              <p className="text-xs text-muted-foreground leading-tight">Mistura de questões IA e Banca</p>
             </button>
           </div>
         </div>
@@ -274,16 +284,26 @@ export default function QuestoesPage() {
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><BookOpen className="h-5 w-5 text-primary" /> Escolha uma Matéria</h1>
             <p className="text-sm text-muted-foreground">Selecione o que deseja estudar agora.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {filteredSubjects.map(sub => (
-              <button key={sub.id} onClick={() => setSelectedSubjectId(sub.id)}
-                className="p-4 rounded-2xl bg-card border border-border text-left hover:border-primary/50 transition-all active:scale-[0.98]">
-                <div className="text-2xl mb-2">{sub.icon}</div>
-                <h3 className="font-semibold text-sm text-foreground line-clamp-2">{sub.name}</h3>
-              </button>
-            ))}
+          <div className="space-y-3">
+            {filteredSubjects.map(sub => {
+              const IconComponent = SUBJECT_UI_MAP[sub.name]?.icon || BookOpenIcon;
+              const color = SUBJECT_UI_MAP[sub.name]?.color || "hsl(217 91% 60%)";
+              return (
+                <button key={sub.id} onClick={() => setSelectedSubjectId(sub.id)}
+                  className="w-full flex items-center gap-4 rounded-2xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl"
+                    style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                    <IconComponent className="h-6 w-6" style={{ color }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground">{sub.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{sub.questionCount || 'Várias'} questões</p>
+                  </div>
+                </button>
+              );
+            })}
             {filteredSubjects.length === 0 && (
-              <p className="col-span-2 text-center text-muted-foreground py-8">Nenhuma matéria disponível neste curso.</p>
+              <p className="text-center text-muted-foreground py-8">Nenhuma matéria disponível neste curso.</p>
             )}
           </div>
         </div>
@@ -393,7 +413,7 @@ export default function QuestoesPage() {
           key={currentQuestion.id}
           question={currentQuestion}
           subjectName={subject?.name ?? "Geral"}
-          subjectIcon={subject?.icon ?? "📖"}
+          subjectIcon={subject?.icon}
           onNext={handleNext}
           onAnswer={handleAnswer}
         />

@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { Layers, RotateCcw, X, Check, HelpCircle } from "lucide-react";
+import { Layers, CheckCircle2, XCircle, ChevronLeft, BookOpen, BookOpenIcon, X, HelpCircle, Check, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessContent, isUserActive } from "@/services/accessService";
-import { Flashcard } from "@/types/study";
-import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews } from "@/hooks/useStudyData";
-import { useMemo } from "react";
+import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
+import { Flashcard } from "@/types/study";
 
 function FlashcardViewer({ card, onRate }: {
   card: Flashcard;
@@ -18,11 +17,14 @@ function FlashcardViewer({ card, onRate }: {
   const { data: subjects = [] } = useSubjects();
   const subject = subjects.find((s) => s.id === card.subjectId);
 
+  const SubjectIcon = subject?.icon;
+  
   return (
     <div className="space-y-4 animate-slide-up">
       <div className="flex items-center gap-2">
         <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-          {subject?.icon ?? "📖"} {subject?.name ?? "Geral"}
+          {SubjectIcon && <SubjectIcon className="h-3.5 w-3.5 inline mr-1" />}
+          {subject?.name ?? "Geral"}
         </Badge>
         <Badge variant="outline" className="text-xs border-border text-muted-foreground">
           {card.topic}
@@ -176,16 +178,27 @@ export default function FlashcardsPage() {
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><Layers className="h-5 w-5 text-accent" /> Matéria (Flashcards)</h1>
             <p className="text-sm text-muted-foreground">Selecione a matéria para revisar seus flashcards.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {filteredSubjects.map(sub => (
-              <button key={sub.id} onClick={() => setSelectedSubjectId(sub.id)}
-                className="p-4 rounded-2xl bg-card border border-border text-left hover:border-primary/50 transition-all active:scale-[0.98]">
-                <div className="text-2xl mb-2">{sub.icon}</div>
-                <h3 className="font-semibold text-sm text-foreground line-clamp-2">{sub.name}</h3>
-              </button>
-            ))}
+          <div className="space-y-3">
+            {filteredSubjects.map(sub => {
+              const IconComponent = SUBJECT_UI_MAP[sub.name]?.icon || BookOpenIcon;
+              const color = SUBJECT_UI_MAP[sub.name]?.color || "hsl(217 91% 60%)";
+              const count = flashcards.filter(f => f.subjectId === sub.id).length;
+              return (
+                <button key={sub.id} onClick={() => setSelectedSubjectId(sub.id)}
+                  className="w-full flex items-center gap-4 rounded-2xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl"
+                    style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
+                    <IconComponent className="h-6 w-6" style={{ color }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground">{sub.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{count} {count === 1 ? 'card' : 'cards'}</p>
+                  </div>
+                </button>
+              );
+            })}
             {filteredSubjects.length === 0 && (
-              <p className="col-span-2 text-center text-muted-foreground py-8">Nenhum flashcard cadastrado ainda.</p>
+              <p className="text-center text-muted-foreground py-8">Nenhum flashcard cadastrado ainda.</p>
             )}
           </div>
         </div>

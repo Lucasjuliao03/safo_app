@@ -4,19 +4,40 @@ import { Subject, Question, Flashcard } from '@/types/study';
 import { toast } from 'sonner';
 import { ACHIEVEMENTS } from '@/types/achievements';
 import { useNotificationContext } from '@/contexts/NotificationContext';
+import { Scale, FileText, BookOpen, Building2, Users, PenTool, BookOpenIcon } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════ */
 /*  ICON MAP (UI only — not stored in DB)                 */
 /* ═══════════════════════════════════════════════════════ */
-export const SUBJECT_UI_MAP: Record<string, { icon: string; color: string }> = {
-  "Direito Penal":            { icon: "⚖️", color: "hsl(0 72% 55%)" },
-  "Direito Constitucional":   { icon: "📜", color: "hsl(217 91% 60%)" },
-  "Legislação Especial":      { icon: "📋", color: "hsl(142 71% 45%)" },
-  "Direito Administrativo":   { icon: "🏛️", color: "hsl(38 92% 55%)" },
-  "Direitos Humanos":         { icon: "🤝", color: "hsl(271 68% 60%)" },
-  "Português":                { icon: "📝", color: "hsl(190 80% 50%)" },
+export const SUBJECT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Direito Penal": Scale,
+  "Direito Constitucional": FileText,
+  "Legislação Especial": BookOpen,
+  "Direito Administrativo": Building2,
+  "Direitos Humanos": Users,
+  "Português": PenTool,
 };
-const DEFAULT_UI = { icon: "📖", color: "hsl(217 91% 60%)" };
+
+export const SUBJECT_COLORS: Record<string, string> = {
+  "Direito Penal": "hsl(0 72% 55%)",
+  "Direito Constitucional": "hsl(217 91% 60%)",
+  "Legislação Especial": "hsl(142 71% 45%)",
+  "Direito Administrativo": "hsl(38 92% 55%)",
+  "Direitos Humanos": "hsl(271 68% 60%)",
+  "Português": "hsl(190 80% 50%)",
+};
+
+export const DEFAULT_ICON = BookOpenIcon;
+export const DEFAULT_COLOR = "hsl(217 91% 60%)";
+
+export const SUBJECT_UI_MAP: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  "Direito Penal":            { icon: Scale, color: "hsl(0 72% 55%)" },
+  "Direito Constitucional":   { icon: FileText, color: "hsl(217 91% 60%)" },
+  "Legislação Especial":      { icon: BookOpen, color: "hsl(142 71% 45%)" },
+  "Direito Administrativo":   { icon: Building2, color: "hsl(38 92% 55%)" },
+  "Direitos Humanos":         { icon: Users, color: "hsl(271 68% 60%)" },
+  "Português":                { icon: PenTool, color: "hsl(190 80% 50%)" },
+};
 
 /* ═══════════════════════════════════════════════════════ */
 /*  SUBJECTS                                              */
@@ -52,9 +73,9 @@ export function useSubjects(courseId?: string | null) {
       }
 
       return allSubjects.map((s: any): Subject => {
-        // Fallback or exact match
-        const ui = Object.entries(SUBJECT_UI_MAP).find(([key]) => s.name.includes(key))?.[1] || DEFAULT_UI;
-        return { id: String(s.id), name: s.name, icon: ui.icon, color: ui.color, questionCount: 0 };
+        const color = SUBJECT_COLORS[s.name] || DEFAULT_COLOR;
+        const IconComponent = SUBJECT_ICONS[s.name] || DEFAULT_ICON;
+        return { id: String(s.id), name: s.name, icon: IconComponent, color, questionCount: 0 };
       });
     },
     staleTime: 1000 * 60 * 5, // 5 min
@@ -201,6 +222,7 @@ export interface CourseRow {
   id: string;
   name: string;
   description: string | null;
+  examDate: string | null;
 }
 
 export function useCourses() {
@@ -213,6 +235,7 @@ export function useCourses() {
         id: String(c.id),
         name: c.name,
         description: c.description,
+        examDate: c.exam_date ? c.exam_date.split('T')[0] : null,
       }));
     },
     staleTime: 1000 * 60 * 30,

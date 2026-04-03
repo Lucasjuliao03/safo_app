@@ -12,6 +12,7 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ interface UserProfile {
   name: string;
   email: string;
   is_approved: boolean;
+  course_id?: number | null;
 }
 
 interface NotificationLog {
@@ -33,7 +35,7 @@ interface NotificationLog {
   created_at: string;
 }
 
-type TargetMode = "all" | "select";
+type TargetMode = "all" | "select" | "course";
 
 export default function AdminPush() {
   // Form state
@@ -42,11 +44,13 @@ export default function AdminPush() {
   const [url, setUrl] = useState("/");
   const [targetMode, setTargetMode] = useState<TargetMode>("all");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSending, setIsSending] = useState(false);
 
   // Data state
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [courses, setCourses] = useState<{ id: number; title: string }[]>([]);
   const [subscribedUserIds, setSubscribedUserIds] = useState<Set<string>>(new Set());
   const [recentLogs, setRecentLogs] = useState<NotificationLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -63,10 +67,17 @@ export default function AdminPush() {
   async function loadData() {
     setLoadingUsers(true);
 
-    // Buscar usuários (mesmos campos que getAllUsers do authService)
+    // Buscar cursos
+    const { data: coursesData } = await supabase
+      .from("courses")
+      .select("id, title")
+      .order("title");
+    setCourses(coursesData || []);
+
+    // Buscar usuários
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, username, role, is_active")
+      .select("id, full_name, username, role, is_active, course_id")
       .order("full_name");
 
     // Mapear para o formato local, excluindo admins
@@ -77,6 +88,7 @@ export default function AdminPush() {
         name: p.full_name || "Sem nome",
         email: p.username || "",
         is_approved: p.is_active,
+        course_id: p.course_id,
       }));
 
     // Buscar quem tem push ativo
@@ -137,19 +149,33 @@ export default function AdminPush() {
       return;
     }
 
-    const targetUsers =
-      targetMode === "all"
-        ? users.filter((u) => subscribedUserIds.has(u.id)).map((u) => u.id)
-        : selectedUserIds;
+    if (targetMode === "course" && !selectedCourseId) {
+      toast.error("Selecione um curso.");
+      return;
+    }
+
+    let targetUsers: string[] = [];
+    
+    if (targetMode === "all") {
+      targetUsers = users.filter((u) => subscribedUserIds.has(u.id)).map((u) => u.id);
+    } else if (targetMode === "course") {
+      targetUsers = users
+        .filter((u) => u.course_id === parseInt(selectedCourseId) && subscribedUserIds.has(u.id))
+        .map((u) => u.id);
+    } else {
+      targetUsers = selectedUserIds;
+    }
 
     if (targetUsers.length === 0) {
-      toast.error("Nenhum usuário com push ativado para enviar.");
+      toast.error("Nenhum usuário com push ativado para enviar neste filtro.");
       return;
     }
 
     const confirmMsg =
       targetMode === "all"
         ? `Enviar para TODOS os ${targetUsers.length} usuários com push ativo?`
+        : targetMode === "course"
+        ? `Enviar para ${targetUsers.length} usuário(s) do curso selecionado?`
         : `Enviar para ${targetUsers.length} usuário(s) selecionado(s)?`;
 
     if (!confirm(confirmMsg)) return;
@@ -310,7 +336,19 @@ export default function AdminPush() {
                 )}
               >
                 <Users className="h-4 w-4" />
-                Todos ({totalSubscribed})
+                Todos
+              </button>
+              <button
+                onClick={() => setTargetMode("course")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all border",
+                  targetMode === "course"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                )}
+              >
+                <Layers className="h-4 w-4" />
+                Por Curso
               </button>
               <button
                 onClick={() => setTargetMode("select")}
@@ -327,6 +365,30 @@ export default function AdminPush() {
               </button>
             </div>
           </div>
+
+          {/* Course selection */}
+          {targetMode === "course" && (
+            <div className="space-y-3 animate-slide-down">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Selecione o Curso
+              </label>
+              <select
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value)}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+              >
+                <option value="">Selecione um curso...</option>
+                {courses.map((c) => {
+                  const usersInCourseCount = users.filter((u) => u.course_id === c.id && subscribedUserIds.has(u.id)).length;
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.title} — {usersInCourseCount} aluno(s) ativos
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
 
           {/* User selection */}
           {targetMode === "select" && (

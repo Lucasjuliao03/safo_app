@@ -10,48 +10,44 @@ interface NotificationBannerProps {
 export function NotificationBanner({ onDismiss }: NotificationBannerProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
-  const notifications = useNotificationContext();
+  const { webPush, isSupported } = useNotificationContext();
 
   useEffect(() => {
-    const dismissed = localStorage.getItem('notification_banner_dismissed');
+    const dismissed = localStorage.getItem('push_banner_dismissed');
     if (dismissed) {
       setIsDismissed(true);
       return;
     }
-    
-    if (notifications.isSupported && notifications.permission === 'default') {
+
+    // Se suporta push e NÃO está inscrito, mostrar banner
+    if (isSupported && webPush.isSupported && !webPush.isSubscribed) {
       const timer = setTimeout(() => {
         setIsVisible(true);
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [notifications.isSupported, notifications.permission]);
+  }, [isSupported, webPush.isSupported, webPush.isSubscribed]);
 
   const handleAccept = async () => {
-    const granted = await notifications.requestPermission();
-    if (granted) {
-      notifications.saveSettings({
-        ...notifications.settings,
-        enabled: true,
-        dailyReminder: true,
-        streakAlert: true,
-        achievementAlert: true,
-      });
+    // Tenta inscrever no Web Push real
+    const success = await webPush.subscribe();
+    if (success) {
+      // toast já é chamado dentro do NotificationSettings
     }
     setIsVisible(false);
     setIsDismissed(true);
-    localStorage.setItem('notification_banner_dismissed', 'true');
+    localStorage.setItem('push_banner_dismissed', 'true');
     onDismiss?.();
   };
 
   const handleDismiss = () => {
     setIsVisible(false);
     setIsDismissed(true);
-    localStorage.setItem('notification_banner_dismissed', 'true');
+    localStorage.setItem('push_banner_dismissed', 'true');
     onDismiss?.();
   };
 
-  if (!isVisible || isDismissed || !notifications.isSupported) {
+  if (!isVisible || isDismissed || !isSupported || webPush.isSubscribed) {
     return null;
   }
 
@@ -77,14 +73,15 @@ export function NotificationBanner({ onDismiss }: NotificationBannerProps) {
               Ative as Notificações 🔔
             </h3>
             <p className="text-white/80 text-sm mb-3">
-              Receba lembretes diários para estudar e não perca seu streak! Nunca mais esqueça de praticar.
+              Receba lembretes para estudar, alertas de streak e mensagens motivacionais, mesmo com o app fechado!
             </p>
             <div className="flex gap-2">
               <button
                 onClick={handleAccept}
+                disabled={webPush.isLoading}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-white text-primary font-semibold text-sm hover:bg-white/90 transition-colors active:scale-[0.98]"
               >
-                Ativar
+                {webPush.isLoading ? 'Ativando...' : 'Ativar'}
               </button>
               <button
                 onClick={handleDismiss}
@@ -101,17 +98,15 @@ export function NotificationBanner({ onDismiss }: NotificationBannerProps) {
 }
 
 export function useNotificationBanner() {
-  const notifications = useNotificationContext();
+  const { webPush, isSupported } = useNotificationContext();
 
   useEffect(() => {
-    if (!notifications.isSupported || notifications.permission !== 'default') {
+    if (!isSupported || !webPush.isSupported || webPush.isSubscribed) {
       return;
     }
 
-    const dismissed = localStorage.getItem('notification_banner_dismissed');
-    if (dismissed) {
-      return;
-    }
+    const dismissed = localStorage.getItem('push_banner_dismissed');
+    if (dismissed) return;
 
     const timer = setTimeout(() => {
       const event = new CustomEvent('safo:show-notification-banner');
@@ -119,5 +114,5 @@ export function useNotificationBanner() {
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [notifications.isSupported, notifications.permission]);
+  }, [isSupported, webPush.isSupported, webPush.isSubscribed]);
 }
