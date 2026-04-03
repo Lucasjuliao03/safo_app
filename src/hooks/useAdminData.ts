@@ -241,12 +241,13 @@ export function useAdminTopics(subjectId?: number) {
 export function useCreateTopic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (topic: { subjectId: number; name: string; description?: string; sortOrder?: number }) => {
+    mutationFn: async (topic: { subjectId: number; name: string; description?: string; sortOrder?: number; targetCourseIds?: number[] }) => {
       const { error } = await supabase.from("topics").insert({
         subject_id: topic.subjectId,
         name: topic.name,
         description: topic.description,
-        sort_order: topic.sortOrder ?? 0
+        sort_order: topic.sortOrder ?? 0,
+        target_course_ids: topic.targetCourseIds && topic.targetCourseIds.length > 0 ? topic.targetCourseIds : null
       });
       if (error) throw error;
     },
@@ -260,11 +261,12 @@ export function useCreateTopic() {
 export function useUpdateTopic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { id: number; name: string; description?: string; sortOrder?: number }) => {
+    mutationFn: async (vars: { id: number; name: string; description?: string; sortOrder?: number; targetCourseIds?: number[] }) => {
       const { error } = await supabase.from("topics").update({
         name: vars.name,
         description: vars.description,
-        sort_order: vars.sortOrder
+        sort_order: vars.sortOrder,
+        target_course_ids: vars.targetCourseIds && vars.targetCourseIds.length > 0 ? vars.targetCourseIds : null
       }).eq("id", vars.id);
       if (error) throw error;
     },
@@ -341,7 +343,9 @@ export function useCreateSummary() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (summary: any) => {
-      const { error } = await supabase.from("summaries").insert(summary);
+      console.log('[useCreateSummary] inserting:', summary);
+      const { data, error } = await supabase.from("summaries").insert(summary);
+      console.log('[useCreateSummary] result:', data, 'error:', error);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -441,6 +445,20 @@ export function useCreateQuestion() {
   return useMutation({
     mutationFn: async (question: any) => {
       const { error } = await supabase.from("questions").insert(question);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin_questions"] });
+      qc.invalidateQueries({ queryKey: ["questions"] });
+    },
+  });
+}
+
+export function useBulkCreateQuestions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (questions: any[]) => {
+      const { error } = await supabase.from("questions").insert(questions);
       if (error) throw error;
     },
     onSuccess: () => {

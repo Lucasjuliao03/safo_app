@@ -85,8 +85,8 @@ export default function FlashcardsPage() {
   const { user, isApproved, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: topics = [], isLoading: loadingTop } = useTopics();
-  const { data: flashcards = [], isLoading: loadingF } = useFlashcards();
+  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
+  const { data: flashcards = [], isLoading: loadingF } = useFlashcards(isAdmin ? undefined : courseId);
   const { data: userReviews = [], isLoading: loadingStats } = useUserFlashcardReviews(user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
   

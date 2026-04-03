@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 interface SubjectStats {
   subjectId: string | number;
   name: string;
-  icon: string;
+  icon: any;
   totalAttempts: number;
   totalCorrect: number;
   totalWrong: number;
@@ -147,7 +147,13 @@ function SubjectAccordion({ subject, isExpanded, onToggle }: SubjectAccordionPro
         className="w-full p-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xl">{subject.icon}</span>
+          {(() => {
+            const Icon = subject.icon;
+            if (!Icon) return <span className="text-xl">📚</span>;
+            if (typeof Icon === 'function') return <Icon className="h-5 w-5 text-primary" />;
+            if (typeof Icon === 'string') return <span className="text-xl">{Icon}</span>;
+            return <span className="text-xl">📚</span>;
+          })()}
           <div className="text-left">
             <p className="font-medium text-foreground text-sm">{subject.name}</p>
             <p className="text-[10px] text-muted-foreground">

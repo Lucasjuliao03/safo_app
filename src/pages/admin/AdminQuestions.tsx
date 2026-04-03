@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { useAdminQuestions, useCreateQuestion, useUpdateQuestion, useDeleteQuestion, useAdminSubjects, useAdminTopics } from "@/hooks/useAdminData";
-import { Plus, Edit2, Filter, X, Trash2 } from "lucide-react";
+import { Plus, Edit2, Filter, X, Trash2, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminQuestionImport } from "@/components/AdminQuestionImport";
 
 export default function AdminQuestions() {
   const [subjectFilter, setSubjectFilter] = useState<number | undefined>();
@@ -10,16 +11,18 @@ export default function AdminQuestions() {
   
   const { data: questions = [], isLoading } = useAdminQuestions({ subjectId: subjectFilter, topicId: topicFilter });
   const { data: subjects = [] } = useAdminSubjects();
-  const { data: topics = [] } = useAdminTopics(subjectFilter);
+  const { data: topics = [] } = useAdminTopics();
 
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
   const deleteMutation = useDeleteQuestion();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   // Form State
+  const [format, setFormat] = useState<"multiple_choice" | "true_false">("multiple_choice");
   const [statement, setStatement] = useState("");
   const [options, setOptions] = useState<string[]>(["", "", "", "", ""]);
   const [correctOption, setCorrectOption] = useState<number>(0);
@@ -31,10 +34,16 @@ export default function AdminQuestions() {
 
   const openForm = (q?: any) => {
     if (q) {
+      const qFormat = q.format || "multiple_choice";
       setEditingId(q.id);
+      setFormat(qFormat);
       setStatement(q.statement);
       setOptions([q.option_a || "", q.option_b || "", q.option_c || "", q.option_d || "", q.option_e || ""]);
-      setCorrectOption(q.correct_option ? q.correct_option.charCodeAt(0) - 65 : 0); // 'A' -> 0, 'B' -> 1
+      if (qFormat === "true_false") {
+        setCorrectOption(q.correct_option === "V" ? 0 : 1);
+      } else {
+        setCorrectOption(q.correct_option ? q.correct_option.charCodeAt(0) - 65 : 0); // 'A' -> 0, 'B' -> 1
+      }
       setExplanation(q.explanation || "");
       setDifficulty(q.difficulty || "medium");
       setSubjectId(q.subject_id || 0);
@@ -42,6 +51,7 @@ export default function AdminQuestions() {
       setIsActive(q.is_active ?? true);
     } else {
       setEditingId(null);
+      setFormat("multiple_choice");
       setStatement("");
       setOptions(["", "", "", "", ""]);
       setCorrectOption(0);
@@ -66,31 +76,44 @@ export default function AdminQuestions() {
   };
 
   const handleSave = () => {
-    if (!statement.trim() || !subjectId || options.some(opt => !opt.trim())) {
-      alert("Preencha o enunciado, matéria e todas as 5 alternativas.");
+    if (!statement.trim() || !subjectId) {
+      alert("Preencha o enunciado e matéria.");
       return;
     }
+    if (format === "multiple_choice" && options.slice(0, 4).some(opt => !opt.trim())) {
+      alert("Por favor, preencha no mínimo as alternativas de A até D.");
+      return;
+    }
+
     const data = {
+      format,
       statement,
-      option_a: options[0],
-      option_b: options[1],
-      option_c: options[2],
-      option_d: options[3],
-      option_e: options[4],
-      correct_option: String.fromCharCode(65 + correctOption), // 0 -> 'A'
+      option_a: format === "multiple_choice" ? options[0] : "",
+      option_b: format === "multiple_choice" ? options[1] : "",
+      option_c: format === "multiple_choice" ? options[2] : "",
+      option_d: format === "multiple_choice" ? options[3] : "",
+      option_e: format === "multiple_choice" ? (options[4] || "") : "",
+      correct_option: format === "true_false" ? (correctOption === 0 ? "V" : "F") : String.fromCharCode(65 + correctOption), // 0 -> 'A'
       explanation,
       difficulty,
       subject_id: subjectId,
       topic_id: topicId || null,
+      edict_id: 1,
       is_active: isActive,
       status: "published",
-      question_type: "banca"
+      question_type: format === "true_false" ? "banca" : "banca"
     };
 
     if (editingId) {
-      updateMutation.mutate({ id: editingId, data }, { onSuccess: closeForm });
+      updateMutation.mutate({ id: editingId, data }, { 
+        onSuccess: closeForm,
+        onError: (err: any) => alert(err.message || "Erro ao atualizar a questão. Verifique se você executou a atualização no banco de dados.")
+      });
     } else {
-      createMutation.mutate(data, { onSuccess: closeForm });
+      createMutation.mutate(data, { 
+        onSuccess: closeForm,
+        onError: (err: any) => alert(err.message || "Erro ao salvar a questão. Verifique se você executou a atualização no banco de dados.")
+      });
     }
   };
 
@@ -105,9 +128,14 @@ export default function AdminQuestions() {
             <p className="text-muted-foreground text-sm">Gerencie todas as questões da plataforma.</p>
           </div>
           {!isFormOpen && (
-            <button onClick={() => openForm()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-sm">
-              <Plus className="h-5 w-5" /> Nova Questão
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setIsImportOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-xl font-bold hover:bg-secondary/90 transition-colors shadow-sm">
+                <UploadCloud className="h-5 w-5" /> Importar
+              </button>
+              <button onClick={() => openForm()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-sm">
+                <Plus className="h-5 w-5" /> Nova Questão
+              </button>
+            </div>
           )}
         </div>
 
@@ -120,6 +148,10 @@ export default function AdminQuestions() {
             
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-3">
+                <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                  <button onClick={() => setFormat("multiple_choice")} className={cn("flex-1 text-sm font-semibold py-1.5 rounded-md transition-colors", format === "multiple_choice" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")} >Múltipla Escolha</button>
+                  <button onClick={() => {setFormat("true_false"); setCorrectOption(0);}} className={cn("flex-1 text-sm font-semibold py-1.5 rounded-md transition-colors", format === "true_false" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")} >Certo / Errado</button>
+                </div>
                 <textarea placeholder="Enunciado da Questão" value={statement} onChange={e => setStatement(e.target.value)} className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 min-h-[100px]" />
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -129,7 +161,7 @@ export default function AdminQuestions() {
                   </select>
                   <select value={topicId} onChange={e => setTopicId(Number(e.target.value))} className="text-sm rounded-lg border border-border bg-background px-3 py-2" disabled={!subjectId}>
                     <option value={0}>Selecione Tema (Opcional)</option>
-                    {activeTopics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {topics.filter(t => t.subject_id === subjectId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   <select value={difficulty} onChange={e => setDifficulty(e.target.value as any)} className="text-sm rounded-lg border border-border bg-background px-3 py-2">
                     <option value="easy">Fácil</option>
@@ -145,17 +177,32 @@ export default function AdminQuestions() {
               </div>
 
               <div className="space-y-2 border border-border p-3 rounded-lg bg-muted/20">
-                <p className="text-xs font-bold text-muted-foreground mb-2">Alternativas (Marque a correta)</p>
-                {options.map((opt, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <input type="radio" name="correctOpt" checked={correctOption === i} onChange={() => setCorrectOption(i)} className="mt-2.5" />
-                    <textarea value={opt} onChange={e => {
-                      const newOpts = [...options];
-                      newOpts[i] = e.target.value;
-                      setOptions(newOpts);
-                    }} placeholder={`Alternativa ${String.fromCharCode(65+i)}`} className={cn("flex-1 text-sm rounded-md border bg-background px-2 py-1.5 min-h-[40px]", correctOption === i ? "border-success" : "border-border")} />
+                <p className="text-xs font-bold text-muted-foreground mb-2">
+                  {format === "multiple_choice" ? "Alternativas (Marque a correta)" : "Resposta Correta"}
+                </p>
+                {format === "multiple_choice" ? (
+                  options.map((opt, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <input type="radio" name="correctOpt" checked={correctOption === i} onChange={() => setCorrectOption(i)} className="mt-2.5" />
+                      <textarea value={opt} onChange={e => {
+                        const newOpts = [...options];
+                        newOpts[i] = e.target.value;
+                        setOptions(newOpts);
+                      }} placeholder={`Alternativa ${String.fromCharCode(65+i)} ${i===4? "(Opcional)":""}`} className={cn("flex-1 text-sm rounded-md border bg-background px-2 py-1.5 min-h-[40px]", correctOption === i ? "border-success" : "border-border")} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <label className={cn("flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all", correctOption === 0 ? "border-success bg-success/10" : "border-border bg-background")}>
+                      <input type="radio" name="tfOpt" checked={correctOption === 0} onChange={() => setCorrectOption(0)} className="w-4 h-4 text-success" />
+                      <span className={cn("font-bold", correctOption === 0 ? "text-success" : "text-foreground")}>Verdadeiro / Certo</span>
+                    </label>
+                    <label className={cn("flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all", correctOption === 1 ? "border-destructive bg-destructive/10" : "border-border bg-background")}>
+                      <input type="radio" name="tfOpt" checked={correctOption === 1} onChange={() => setCorrectOption(1)} className="w-4 h-4 text-destructive" />
+                      <span className={cn("font-bold", correctOption === 1 ? "text-destructive" : "text-foreground")}>Falso / Errado</span>
+                    </label>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -190,6 +237,7 @@ export default function AdminQuestions() {
                   <th className="px-4 py-3 font-semibold">ID</th>
                   <th className="px-4 py-3 font-semibold">Enunciado</th>
                   <th className="px-4 py-3 font-semibold">Matéria / Tema</th>
+                  <th className="px-4 py-3 font-semibold text-center">Formato</th>
                   <th className="px-4 py-3 font-semibold text-center">Nível</th>
                   <th className="px-4 py-3 font-semibold text-center">Status</th>
                   <th className="px-4 py-3 font-semibold text-right">Ações</th>
@@ -210,6 +258,11 @@ export default function AdminQuestions() {
                           <span className="font-semibold text-xs">{(q as any).subjects?.name || "Sem Matéria"}</span>
                           <span className="text-[10px] text-muted-foreground">{(q as any).topics?.name || "Sem Tema"}</span>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-bold bg-muted text-muted-foreground">
+                          {q.format === 'true_false' ? 'C/E' : 'Múltipla'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={cn(
@@ -235,6 +288,9 @@ export default function AdminQuestions() {
           </div>
         </div>
       </div>
+      {isImportOpen && (
+        <AdminQuestionImport onClose={() => setIsImportOpen(false)} presetSubjectId={subjectFilter} />
+      )}
     </AdminLayout>
   );
 }

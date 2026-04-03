@@ -90,7 +90,7 @@ function FlashcardsManager() {
 
   const handleSave = () => {
     if (!front.trim() || !back.trim() || !subjectId) return alert("Preencha frente, verso e selecione a matéria.");
-    const data = { front_text: front, back_text: back, subject_id: subjectId, topic_id: topicId || null, difficulty: "medium", status: "published", is_active: true };
+    const data = { front_text: front, back_text: back, subject_id: subjectId, topic_id: topicId || null, edict_id: 1, difficulty: "medium", status: "published", is_active: true };
     if (editingId) updateMutation.mutate({ id: editingId, data }, { onSuccess: closeForm });
     else createMutation.mutate(data, { onSuccess: closeForm });
   };
@@ -214,7 +214,16 @@ function SummariesManager() {
 
   const handleSave = () => {
     if (!title.trim() || !content.trim() || !subjectId) return alert("Preencha título, conteúdo e selecione a matéria.");
-    const data = { title, content_markdown: content, format: "markdown", subject_id: subjectId, topic_id: topicId || null, status: "published", is_active: true };
+    const data = { 
+      title, 
+      content_markdown: content, 
+      format: "markdown", 
+      subject_id: subjectId, 
+      topic_id: topicId || null, 
+      edict_id: 1,
+      status: "published", 
+      is_active: true 
+    };
     if (editingId) updateMutation.mutate({ id: editingId, data }, { onSuccess: closeForm });
     else createMutation.mutate(data, { onSuccess: closeForm });
   };

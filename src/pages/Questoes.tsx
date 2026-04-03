@@ -56,7 +56,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4">
-        <p className="text-sm leading-relaxed text-foreground">{question.statement}</p>
+        <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{question.statement}</p>
       </div>
 
       <div className="space-y-2">
@@ -84,7 +84,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
                 {confirmed && isRight ? <CheckCircle2 className="h-4 w-4" /> :
                  confirmed && isSelected && !isRight ? <XCircle className="h-4 w-4" /> : letter}
               </span>
-              <span className="text-sm text-foreground leading-relaxed flex-1">{opt.text}</span>
+              <span className="text-sm text-foreground leading-relaxed flex-1 whitespace-pre-wrap text-left">{opt.text}</span>
             </button>
           );
         })}
@@ -106,7 +106,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
                 {isCorrect ? "Resposta Correta!" : "Resposta Incorreta"}
               </span>
             </div>
-            <p className="text-sm text-foreground/80 leading-relaxed">{question.explanation}</p>
+            <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{question.explanation}</p>
           </div>
           <button onClick={handleNext}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-semibold text-sm text-primary-foreground active:scale-[0.98] transition-all">
@@ -122,12 +122,13 @@ export default function QuestoesPage() {
   const { user, isApproved, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: topics = [], isLoading: loadingTop } = useTopics();
-  const { data: questions = [], isLoading: loadingQ } = useQuestions();
+  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
+  const { data: questions = [], isLoading: loadingQ } = useQuestions(isAdmin ? undefined : courseId);
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [], isLoading: loadingStats } = useUserQuestionStats(user?.id);
   const recordAnswer = useRecordAnswer();
 
+  const [selectedFormat, setSelectedFormat] = useState<"multiple_choice" | "true_false" | null>(null);
   const [selectedSource, setSelectedSource] = useState<"all" | "ia" | "banca" | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -138,15 +139,21 @@ export default function QuestoesPage() {
   // Subjects are now strictly filtered via the hook based on courseId.
   const filteredSubjects = subjects;
   
-  // Filter questions by source if one is selected
+  // Filter questions by format and source
   const sourceFilteredQuestions = questions.filter(q => {
+    if (selectedFormat === "true_false") {
+      return q.format === "true_false";
+    }
+    if (q.format === "true_false") return false; // multiple_choice selecionado
     if (selectedSource === "all") return true;
     if (selectedSource === "ia") return q.organ === "IA";
     if (selectedSource === "banca") return q.organ !== "IA";
     return true;
   });
 
-  const filteredTopics = topics.filter(t => String(t.subject_id) === selectedSubjectId);
+  const filteredTopics = topics
+    .filter(t => String(t.subject_id) === selectedSubjectId)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const startSession = (topicId: string) => {
     setSelectedTopicId(topicId);
@@ -234,11 +241,45 @@ export default function QuestoesPage() {
 
   // --- SELECTION SCREENS ---
 
-  if (!selectedSource) {
+  if (!selectedFormat) {
     return (
       <AppLayout>
         <div className="px-4 pt-6 space-y-6 animate-fade-in pb-20">
           <div>
+            <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><Filter className="h-5 w-5 text-primary" /> Formato da Questão</h1>
+            <p className="text-sm text-muted-foreground">Escolha o formato que deseja resolver agora.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => setSelectedFormat("multiple_choice")}
+              className="flex flex-col items-center justify-center p-5 rounded-2xl bg-card border border-border text-center hover:border-primary/50 transition-all active:scale-[0.98]">
+              <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 mb-3">
+                <BookOpenIcon className="h-7 w-7 text-primary" />
+              </div>
+              <h3 className="font-bold text-foreground text-base mb-1">Múltipla Escolha</h3>
+              <p className="text-xs text-muted-foreground leading-tight">Alternativas</p>
+            </button>
+            <button onClick={() => { setSelectedFormat("true_false"); setSelectedSource("all"); }}
+              className="flex flex-col items-center justify-center p-5 rounded-2xl bg-card border border-border text-center hover:border-primary/50 transition-all active:scale-[0.98]">
+              <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-accent/10 border border-accent/20 mb-3">
+                <CheckCircle2 className="h-7 w-7 text-accent" />
+              </div>
+              <h3 className="font-bold text-foreground text-base mb-1">Verdadeiro/Falso</h3>
+              <p className="text-xs text-muted-foreground leading-tight">Certo ou Errado</p>
+            </button>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (selectedFormat === "multiple_choice" && !selectedSource) {
+    return (
+      <AppLayout>
+        <div className="px-4 pt-6 space-y-6 animate-fade-in pb-20">
+          <div>
+            <button onClick={() => setSelectedFormat(null)} className="text-primary text-sm font-medium mb-3 hover:underline">
+              &larr; Voltar para Formatos
+            </button>
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><Filter className="h-5 w-5 text-primary" /> Origem das Questões</h1>
             <p className="text-sm text-muted-foreground">Escolha o tipo de questão que deseja resolver agora.</p>
           </div>
@@ -278,8 +319,15 @@ export default function QuestoesPage() {
       <AppLayout>
         <div className="px-4 pt-6 space-y-6 animate-fade-in pb-20">
           <div>
-            <button onClick={() => setSelectedSource(null)} className="text-primary text-sm font-medium mb-3 hover:underline">
-              &larr; Voltar para Origem
+            <button onClick={() => {
+              if (selectedFormat === "true_false") {
+                setSelectedFormat(null);
+                setSelectedSource(null);
+              } else {
+                setSelectedSource(null);
+              }
+            }} className="text-primary text-sm font-medium mb-3 hover:underline">
+              &larr; Voltar
             </button>
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2 mb-2"><BookOpen className="h-5 w-5 text-primary" /> Escolha uma Matéria</h1>
             <p className="text-sm text-muted-foreground">Selecione o que deseja estudar agora.</p>
@@ -398,7 +446,7 @@ export default function QuestoesPage() {
           <button onClick={() => setSelectedTopicId(null)} className="text-primary pr-4 text-sm font-medium hover:underline truncate max-w-[200px]">
              &larr; Voltar
           </button>
-          <button onClick={() => { setSelectedTopicId(null); setSelectedSubjectId(null); setSelectedSource(null); }} className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground">
+          <button onClick={() => { setSelectedTopicId(null); setSelectedSubjectId(null); setSelectedSource(null); setSelectedFormat(null); }} className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground">
             <Filter className="h-3.5 w-3.5" /> Trocar
           </button>
         </div>

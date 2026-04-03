@@ -1,6 +1,6 @@
 // useStudentEvolution.ts - Hook para buscar dados de evolução do aluno
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { SUBJECT_COLORS, SUBJECT_ICONS, DEFAULT_ICON, DEFAULT_COLOR } from './useStudyData';
 
@@ -47,16 +47,16 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
           return getEmptyEvolution();
         }
 
-        const courseNumId = parseInt(courseId);
+        const cid = parseInt(courseId);
 
-        // 1. Buscar curso para obter exam_date
-        const { data: courseData } = await supabase
-          .from('courses')
+        // 1. Buscar data da prova do PERFIL do usuário
+        const { data: profileData } = await supabase
+          .from('profiles')
           .select('exam_date')
-          .eq('id', courseNumId)
+          .eq('id', userId)
           .maybeSingle();
 
-        const examDate = courseData?.exam_date ? courseData.exam_date.split('T')[0] : null;
+        const examDate = profileData?.exam_date ? String(profileData.exam_date).split('T')[0] : null;
         const examDateFormatted = examDate 
           ? (() => {
               const [y, m, d] = examDate.split('-');
@@ -64,7 +64,6 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
             })()
           : null;
         
-        // Calcular dias até a prova
         let daysUntilExam: number | null = null;
         let examPassed = false;
         
@@ -77,196 +76,181 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
           examPassed = daysUntilExam < 0;
         }
 
-        // 2. Buscar questões do curso (via edicts e edict_subjects)
-        const { data: edicts } = await supabase
-          .from('edicts')
-          .select('id')
-          .eq('course_id', courseNumId)
-          .eq('is_active', true);
-
-        const edictIds = (edicts || []).map(e => e.id);
+        // 2. Buscar TODAS as matérias
+        const { data: subjectsData } = await supabase
+          .from('subjects')
+          .select('id, name')
+          .order('name');
         
-        let subjectIds: number[] = [];
-        if (edictIds.length > 0) {
-          const { data: edictSubjects } = await supabase
-            .from('edict_subjects')
-            .select('subject_id')
-            .in('edict_id', edictIds);
-          
-          subjectIds = Array.from(new Set((edictSubjects || []).map(es => es.subject_id)));
-        }
+        const subjects = subjectsData || [];
 
-        // Se não encontrou matérias via edicts, buscar todas
-        if (subjectIds.length === 0) {
-          const { data: allSubjects } = await supabase
-            .from('subjects')
-            .select('id');
-          subjectIds = (allSubjects || []).map(s => s.id);
-        }
-
-        // 3. Buscar total de questões disponíveis
-        let questionsTotal = 0;
-        if (subjectIds.length > 0) {
-          const { count } = await supabase
-            .from('questions')
-            .select('id', { count: 'exact' })
-            .in('subject_id', subjectIds)
-            .eq('is_active', true)
-            .eq('status', 'published');
-          questionsTotal = count || 0;
-        }
-
-        // 4. Buscar total de questões respondidas pelo aluno (soma histórica)
-        const { data: allProductivity } = await supabase
-          .from('user_daily_productivity')
-          .select('questions_answered')
-          .eq('user_id', userId);
-
-        let questionsDone = 0;
-        if (allProductivity) {
-          questionsDone = allProductivity.reduce((sum, p) => sum + (p.questions_answered || 0), 0);
-        }
-
-        // 5. Buscar total de flashcards disponíveis
-        let flashcardsTotal = 0;
-        if (subjectIds.length > 0) {
-          const { count } = await supabase
-            .from('flashcards')
-            .select('id', { count: 'exact' })
-            .in('subject_id', subjectIds)
-            .eq('is_active', true);
-          flashcardsTotal = count || 0;
-        }
-
-        // 6. Buscar flashcards revisados pelo usuário (do curso)
-        let flashcardsDone = 0;
-        if (subjectIds.length > 0) {
-          const { data: fcReviews } = await supabase
-            .from('user_flashcard_reviews')
-            .select('flashcard_id')
-            .eq('user_id', userId);
-
-          if (fcReviews && fcReviews.length > 0) {
-            const flashcardIds = fcReviews.map(f => f.flashcard_id);
-            const { data: userFlashcards } = await supabase
-              .from('flashcards')
-              .select('id')
-              .in('id', flashcardIds)
-              .in('subject_id', subjectIds)
-              .eq('is_active', true);
-            
-            flashcardsDone = (userFlashcards || []).length;
+        // 3. Buscar TODOS os topics
+        const { data: allTopics } = await supabase
+          .from('topics')
+          .select('id, name, subject_id, target_course_ids');
+        
+        // Filtrar topics visíveis para o curso
+        const visibleTopicIds: number[] = [];
+        (allTopics || []).forEach((t: any) => {
+          if (!t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid)) {
+            visibleTopicIds.push(t.id);
           }
-        }
+        });
 
-        // 7. Buscar total de resumos
-        let summariesTotal = 0;
-        if (subjectIds.length > 0) {
-          const { count } = await supabase
+        // 4. Questões Disponíveis e Respondidas - com paginação
+        let allQuestions: any[] = [];
+        let qPage = 0;
+        const pageSize = 1000;
+        
+        while (true) {
+          const { data: questionsPage } = await supabase
+            .from('questions')
+            .select('id, topic_id, subject_id, topics(target_course_ids)')
+            .eq('is_active', true)
+            .eq('status', 'published')
+            .range(qPage * pageSize, (qPage + 1) * pageSize - 1);
+          
+          if (!questionsPage || questionsPage.length === 0) break;
+          allQuestions = [...allQuestions, ...questionsPage];
+          qPage++;
+          if (questionsPage.length < pageSize) break;
+        }
+        
+        // Filtrar questões vinculadas ao curso
+        const questions = allQuestions.filter((q: any) => {
+          const tc = q.topics?.target_course_ids;
+          return !tc || tc.length === 0 || tc.includes(cid);
+        });
+        const questionsTotal = questions.length;
+
+        // Respondidas pelo usuário - buscar de TODOS os dias na user_daily_productivity
+        let allProdQuestions = 0;
+        let prodPage = 0;
+        
+        while (true) {
+          const { data: prodData } = await supabase
+            .from('user_daily_productivity')
+            .select('questions_answered')
+            .eq('user_id', userId)
+            .range(prodPage * pageSize, (prodPage + 1) * pageSize - 1);
+          
+          if (!prodData || prodData.length === 0) break;
+          allProdQuestions += prodData.reduce((sum, p) => sum + (p.questions_answered || 0), 0);
+          prodPage++;
+          if (prodData.length < pageSize) break;
+        }
+        
+        const questionsDone = allProdQuestions;
+
+        // 5. Flashcards Disponíveis e Revisados - com paginação
+        let allFlashcards: any[] = [];
+        let fcPage = 0;
+        
+        while (true) {
+          const { data: flashcardsPage } = await supabase
+            .from('flashcards')
+            .select('id, topic_id, subject_id, topics(target_course_ids)')
+            .eq('is_active', true)
+            .range(fcPage * pageSize, (fcPage + 1) * pageSize - 1);
+          
+          if (!flashcardsPage || flashcardsPage.length === 0) break;
+          allFlashcards = [...allFlashcards, ...flashcardsPage];
+          fcPage++;
+          if (flashcardsPage.length < pageSize) break;
+        }
+        
+        // Filtrar flashcards vinculados ao curso
+        const flashcards = allFlashcards.filter((f: any) => {
+          const tc = f.topics?.target_course_ids;
+          return !tc || tc.length === 0 || tc.includes(cid);
+        });
+        const flashcardsTotal = flashcards.length;
+
+        const { data: fcReviews } = await supabase
+          .from('user_flashcard_reviews')
+          .select('flashcard_id')
+          .eq('user_id', userId);
+        
+        const reviewedIds = new Set((fcReviews || []).map(r => String(r.flashcard_id)));
+        const flashcardsDoneCards = flashcards.filter(f => reviewedIds.has(String(f.id)));
+        const flashcardsDone = flashcardsDoneCards.length;
+
+        // 6. Resumos Disponíveis e Visualizados - com paginação
+        let allSummaries: any[] = [];
+        let sPage = 0;
+        
+        while (true) {
+          const { data: summariesPage } = await supabase
             .from('summaries')
-            .select('id', { count: 'exact' })
-            .in('subject_id', subjectIds)
-            .eq('is_active', true);
-          summariesTotal = count || 0;
+            .select('id, topic_id, subject_id, topics(target_course_ids)')
+            .eq('is_active', true)
+            .range(sPage * pageSize, (sPage + 1) * pageSize - 1);
+          
+          if (!summariesPage || summariesPage.length === 0) break;
+          allSummaries = [...allSummaries, ...summariesPage];
+          sPage++;
+          if (summariesPage.length < pageSize) break;
         }
+        
+        // Filtrar resumos vinculados ao curso
+        const summaries = allSummaries.filter((s: any) => {
+          const tc = s.topics?.target_course_ids;
+          return !tc || tc.length === 0 || tc.includes(cid);
+        });
+        const summariesTotal = summaries.length;
 
-        // 8. Buscar resumos visualizados pelo usuário (do curso)
-        let summariesDone = 0;
-        const { data: summaryViews, error: svError } = await supabase
+        const { data: sumViews } = await supabase
           .from('user_summary_views')
           .select('summary_id')
           .eq('user_id', userId);
-
-        console.log('[useStudentEvolution] summaryViews:', summaryViews, 'error:', svError);
-
-        if (summaryViews && summaryViews.length > 0 && subjectIds.length > 0) {
-          const summaryIds = summaryViews.map(s => s.summary_id);
-          console.log('[useStudentEvolution] summaryIds:', summaryIds, 'subjectIds:', subjectIds);
-          
-          const { data: userSummaries } = await supabase
-            .from('summaries')
-            .select('id')
-            .in('id', summaryIds)
-            .in('subject_id', subjectIds)
-            .eq('is_active', true);
-          
-          console.log('[useStudentEvolution] userSummaries:', userSummaries);
-          summariesDone = (userSummaries || []).length;
-        }
-
-        // 9. Buscar progresso por matéria
-        const subjectProgress: SubjectProgress[] = [];
         
-        if (subjectIds.length > 0) {
-          const { data: subjects } = await supabase
-            .from('subjects')
-            .select('id, name')
-            .in('id', subjectIds)
-            .order('name');
+        const viewedIds = new Set((sumViews || []).map(v => String(v.summary_id)));
+        const summariesDoneItems = summaries.filter(s => viewedIds.has(String(s.id)));
+        const summariesDone = summariesDoneItems.length;
 
-          for (const subj of (subjects || [])) {
-            // Questões da matéria
-            const { count: subjQuestionsTotal } = await supabase
-              .from('questions')
-              .select('id', { count: 'exact' })
-              .eq('subject_id', subj.id)
-              .eq('is_active', true)
-              .eq('status', 'published');
-            
-            const subjQuestionsDone = 0; // Simplificado - não calcula por matéria
-            const questionsPercent = subjQuestionsTotal ? Math.round((subjQuestionsDone / subjQuestionsTotal) * 100) : 0;
+        // 7. Calcular Progresso por Matéria
+        const subjectProgress: SubjectProgress[] = subjects.map(subj => {
+          const sQuestionsTotal = questions.filter(q => q.subject_id === subj.id).length;
+          const sQuestionsDone = 0; // Simplificado
+          
+          const sFlashcardsTotal = flashcards.filter(f => f.subject_id === subj.id).length;
+          const sFlashcardsDone = flashcardsDoneCards.filter(f => f.subject_id === subj.id).length;
 
-            // Flashcards da matéria
-            const { count: subjFlashcardsTotal } = await supabase
-              .from('flashcards')
-              .select('id', { count: 'exact' })
-              .eq('subject_id', subj.id)
-              .eq('is_active', true);
+          const sSummariesTotal = summaries.filter(s => s.subject_id === subj.id).length;
+          const sSummariesDone = summariesDoneItems.filter(s => s.subject_id === subj.id).length;
 
-            const subjFlashcardsDone = 0; // Simplificado
-            const flashcardsPercent = subjFlashcardsTotal ? Math.round((subjFlashcardsDone / subjFlashcardsTotal) * 100) : 0;
+          const IconComponent = SUBJECT_ICONS[subj.name] || DEFAULT_ICON;
+          const color = SUBJECT_COLORS[subj.name] || DEFAULT_COLOR;
 
-            // Resumos da matéria
-            const { count: subjSummariesTotal } = await supabase
-              .from('summaries')
-              .select('id', { count: 'exact' })
-              .eq('subject_id', subj.id)
-              .eq('is_active', true);
+          return {
+            id: String(subj.id),
+            name: subj.name,
+            icon: IconComponent,
+            color,
+            questionsTotal: sQuestionsTotal,
+            questionsDone: sQuestionsDone,
+            questionsPercent: sQuestionsTotal > 0 ? Math.round((sQuestionsDone / sQuestionsTotal) * 100) : 0,
+            flashcardsTotal: sFlashcardsTotal,
+            flashcardsDone: sFlashcardsDone,
+            flashcardsPercent: sFlashcardsTotal > 0 ? Math.round((sFlashcardsDone / sFlashcardsTotal) * 100) : 0,
+            summariesTotal: sSummariesTotal,
+            summariesDone: sSummariesDone,
+            summariesPercent: sSummariesTotal > 0 ? Math.round((sSummariesDone / sSummariesTotal) * 100) : 0,
+          };
+        });
 
-            const subjSummariesDone = 0; // Simplificado
-            const summariesPercent = subjSummariesTotal ? Math.round((subjSummariesDone / subjSummariesTotal) * 100) : 0;
-
-            const IconComponent = SUBJECT_ICONS[subj.name] || DEFAULT_ICON;
-            const color = SUBJECT_COLORS[subj.name] || DEFAULT_COLOR;
-
-            subjectProgress.push({
-              id: String(subj.id),
-              name: subj.name,
-              icon: IconComponent,
-              color,
-              questionsTotal: subjQuestionsTotal || 0,
-              questionsDone: subjQuestionsDone,
-              questionsPercent,
-              flashcardsTotal: subjFlashcardsTotal || 0,
-              flashcardsDone: subjFlashcardsDone,
-              flashcardsPercent,
-              summariesTotal: subjSummariesTotal || 0,
-              summariesDone: subjSummariesDone,
-              summariesPercent,
-            });
-          }
-        }
-
+        // 8. Calcular Percentuais Gerais
         const questionsPercent = questionsTotal > 0 ? Math.round((questionsDone / questionsTotal) * 100) : 0;
         const flashcardsPercent = flashcardsTotal > 0 ? Math.round((flashcardsDone / flashcardsTotal) * 100) : 0;
         const summariesPercent = summariesTotal > 0 ? Math.round((summariesDone / summariesTotal) * 100) : 0;
         
-        const hasQuestions = questionsTotal > 0;
-        const hasFlashcards = flashcardsTotal > 0;
-        const hasSummaries = summariesTotal > 0;
-        const totalCategories = (hasQuestions ? 1 : 0) + (hasFlashcards ? 1 : 0) + (hasSummaries ? 1 : 0);
-        const overallPercent = totalCategories > 0 
-          ? Math.round((questionsPercent * (hasQuestions ? 1 : 0) + flashcardsPercent * (hasFlashcards ? 1 : 0) + summariesPercent * (hasSummaries ? 1 : 0)) / totalCategories)
+        const categories = [];
+        if (questionsTotal > 0) categories.push(questionsPercent);
+        if (flashcardsTotal > 0) categories.push(flashcardsPercent);
+        if (summariesTotal > 0) categories.push(summariesPercent);
+        
+        const overallPercent = categories.length > 0 
+          ? Math.round(categories.reduce((a, b) => a + b, 0) / categories.length)
           : 0;
 
         return {
@@ -293,6 +277,24 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
     },
     enabled: !!userId && !!courseId,
     staleTime: 1000 * 60 * 5,
+  });
+}
+
+// Hook para salvar/atualizar data da prova do usuário
+export function useUpdateExamDate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, examDate }: { userId: string; examDate: string | null }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ exam_date: examDate })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['studentEvolution'] });
+      qc.invalidateQueries({ queryKey: ['userProfile'] });
+    },
   });
 }
 

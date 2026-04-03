@@ -46,7 +46,7 @@ export function useSubjects(courseId?: string | null) {
   return useQuery({
     queryKey: ['subjects', courseId],
     queryFn: async () => {
-      // Se courseId for explicitamente null, o usuário não tem curso, então não mostramos nenhuma matéria estudantil.
+      // Admin (courseId undefined) vê tudo; usuário sem curso (null) não vê nada
       if (courseId === null) return [];
 
       let { data, error } = await supabase.from('subjects').select('*').order('name');
@@ -54,22 +54,20 @@ export function useSubjects(courseId?: string | null) {
       let allSubjects = data || [];
 
       if (courseId) {
-         // Query active edicts for this course
-         const { data: edicts } = await supabase.from('edicts').select('id').eq('course_id', parseInt(courseId)).eq('is_active', true);
-         const edictIds = (edicts || []).map(e => e.id);
+         const cid = parseInt(courseId);
          
-         if (edictIds.length > 0) {
-            // Query subjects linked to these edicts
-            const { data: edictSubs } = await supabase.from('edict_subjects').select('subject_id').in('edict_id', edictIds);
-            if (edictSubs && edictSubs.length > 0) {
-               const subjectIds = Array.from(new Set(edictSubs.map(es => es.subject_id)));
-               allSubjects = allSubjects.filter(sub => subjectIds.includes(parseInt(sub.id)));
-            } else {
-               allSubjects = [];
+         // Busca todos os temas e filtra quais são visíveis para este curso
+         const { data: allTopics } = await supabase.from('topics').select('subject_id, target_course_ids');
+         const allowedSubjectIds = new Set<number>();
+         
+         (allTopics || []).forEach((t: any) => {
+            // Tema visível se: target_course_ids está vazio (aberto a todos) OU contém o curso do aluno
+            if (!t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid)) {
+               allowedSubjectIds.add(t.subject_id);
             }
-         } else {
-            allSubjects = [];
-         }
+         });
+         
+         allSubjects = allSubjects.filter(sub => allowedSubjectIds.has(parseInt(sub.id)));
       }
 
       return allSubjects.map((s: any): Subject => {
@@ -78,20 +76,27 @@ export function useSubjects(courseId?: string | null) {
         return { id: String(s.id), name: s.name, icon: IconComponent, color, questionCount: 0 };
       });
     },
-    staleTime: 1000 * 60 * 5, // 5 min
+    staleTime: 1000 * 60 * 5,
   });
 }
 
 /* ═══════════════════════════════════════════════════════ */
 /*  TOPICS / SUBTOPICS                                    */
 /* ═══════════════════════════════════════════════════════ */
-export function useTopics() {
+export function useTopics(courseId?: string | null) {
   return useQuery({
-    queryKey: ['topics'],
+    queryKey: ['topics', courseId],
     queryFn: async () => {
       const { data, error } = await supabase.from('topics').select('*').order('sort_order');
       if (error) throw error;
-      return data || [];
+      if (!data) return [];
+      
+      // Se courseId definido, filtra: tema visível se target_course_ids vazio OU contém o curso
+      if (courseId) {
+        const cid = Number(courseId);
+        return data.filter((t: any) => !t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid));
+      }
+      return data;
     },
     staleTime: 1000 * 60 * 30,
   });
@@ -100,27 +105,54 @@ export function useTopics() {
 /* ═══════════════════════════════════════════════════════ */
 /*  QUESTIONS                                             */
 /* ═══════════════════════════════════════════════════════ */
-export function useQuestions() {
+export function useQuestions(courseId?: string | null) {
   return useQuery({
-    queryKey: ['questions'],
+    queryKey: ['questions', courseId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('questions')
-        .select(`id, subject_id, topic_id, subtopic_id, question_type, difficulty, source_year, statement,
-                 option_a, option_b, option_c, option_d, option_e,
-                 correct_option, explanation, board_id, exam_boards(name), topics(name)`)
-        .eq('is_active', true)
-        .eq('status', 'published');
-
-      if (error) throw error;
-
-      return (data || []).map((q: any): Question => {
+      // Buscar TODAS as questões com paginação
+      let allQuestions: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      
+      while (true) {
+        const { data, error } = await supabase
+          .from('questions')
+          .select(`id, subject_id, topic_id, subtopic_id, question_type, difficulty, source_year, statement,
+                   option_a, option_b, option_c, option_d, option_e, format,
+                   correct_option, explanation, board_id, is_active, status, exam_boards(name), topics(name, target_course_ids)`)
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allQuestions = [...allQuestions, ...data];
+        page++;
+        if (data.length < pageSize) break;
+      }
+      
+      let filtered = allQuestions;
+      
+      // Filtrar por is_active e status
+      filtered = filtered.filter((r: any) => r.is_active === true && r.status === 'published');
+      
+      if (courseId) {
+        const cid = Number(courseId);
+        filtered = filtered.filter((row: any) => {
+          const tc = row.topics?.target_course_ids;
+          return !tc || tc.length === 0 || tc.includes(cid);
+        });
+      }
+      return filtered.map((q: any): Question => {
         const options = [];
-        if (q.option_a) options.push({ id: 'a', text: q.option_a });
-        if (q.option_b) options.push({ id: 'b', text: q.option_b });
-        if (q.option_c) options.push({ id: 'c', text: q.option_c });
-        if (q.option_d) options.push({ id: 'd', text: q.option_d });
-        if (q.option_e) options.push({ id: 'e', text: q.option_e });
+        if (q.format === 'true_false') {
+          options.push({ id: 'v', text: 'Verdadeiro' });
+          options.push({ id: 'f', text: 'Falso' });
+        } else {
+          if (q.option_a) options.push({ id: 'a', text: q.option_a });
+          if (q.option_b) options.push({ id: 'b', text: q.option_b });
+          if (q.option_c) options.push({ id: 'c', text: q.option_c });
+          if (q.option_d) options.push({ id: 'd', text: q.option_d });
+          if (q.option_e) options.push({ id: 'e', text: q.option_e });
+        }
 
         const diff = { easy: 'fácil' as const, medium: 'média' as const, hard: 'difícil' as const }[q.difficulty] || 'média' as const;
 
@@ -133,11 +165,12 @@ export function useQuestions() {
           difficulty: diff,
           year: q.source_year || new Date().getFullYear(),
           board: q.exam_boards?.name || "Banca",
-          organ: q.question_type === 'ia' ? 'IA' : 'Banca',
+          organ: q.format === 'true_false' ? 'Certo/Errado' : (q.question_type === 'ia' ? 'IA' : 'Banca'),
           statement: q.statement,
           options,
           correctOption: q.correct_option.toLowerCase(),
           explanation: q.explanation || "",
+          format: q.format || "multiple_choice",
         };
       });
     },
@@ -148,19 +181,23 @@ export function useQuestions() {
 /* ═══════════════════════════════════════════════════════ */
 /*  FLASHCARDS                                            */
 /* ═══════════════════════════════════════════════════════ */
-export function useFlashcards() {
+export function useFlashcards(courseId?: string | null) {
   return useQuery({
-    queryKey: ['flashcards'],
+    queryKey: ['flashcards', courseId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('flashcards')
         .select(`id, subject_id, topic_id, front_text, back_text, difficulty,
-                 topics(name)`)
+                 topics(name, target_course_ids)`)
         .eq('is_active', true)
         .eq('status', 'published');
       if (error) throw error;
-
-      return (data || []).map((f: any): Flashcard => ({
+      let filtered = data || [];
+      if (courseId) {
+        const cid = Number(courseId);
+        filtered = filtered.filter(row => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
+      }
+      return filtered.map((f: any): Flashcard => ({
         id: String(f.id),
         subjectId: String(f.subject_id),
         topicId: f.topic_id ? String(f.topic_id) : null,
@@ -187,20 +224,25 @@ export interface SummaryItem {
   sortOrder: number;
 }
 
-export function useSummaries() {
+export function useSummaries(courseId?: string | null) {
   return useQuery({
-    queryKey: ['summaries'],
+    queryKey: ['summaries', courseId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('summaries')
         .select(`id, subject_id, topic_id, subtopic_id, title, format, content_html, content_markdown, sort_order,
-                 topics(name), subtopics(name)`)
+                 topics(name, target_course_ids), subtopics(name)`)
         .eq('is_active', true)
         .eq('status', 'published')
         .order('sort_order');
       if (error) throw error;
+      let filtered = data || [];
+      if (courseId) {
+        const cid = Number(courseId);
+        filtered = filtered.filter((row: any) => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
+      }
 
-      return (data || []).map((s: any): SummaryItem => ({
+      return filtered.map((s: any): SummaryItem => ({
         id: String(s.id),
         subjectId: String(s.subject_id),
         topicId: s.topic_id ? String(s.topic_id) : null,

@@ -1,24 +1,27 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon } from "lucide-react";
+import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSubjects, useSummaries, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
+import { useSubjects, useSummaries, useTopics, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
 import { canAccessSummaries, isUserActive } from "@/services/accessService";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
+import { MarkdownRenderer } from "@/components/mdx/MarkdownRenderer";
 
 export default function ResumosPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const courseId = user?.courseId ? String(user.courseId) : null;
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: summaries = [], isLoading: loadingSum } = useSummaries();
+  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
+  const { data: summaries = [], isLoading: loadingSum } = useSummaries(isAdmin ? undefined : courseId);
   const qc = useQueryClient();
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedSummaryId, setSelectedSummaryId] = useState<string | null>(null);
   const [viewedSummaryIds, setViewedSummaryIds] = useState<Set<string>>(new Set());
 
@@ -119,7 +122,7 @@ export default function ResumosPage() {
     }
   };
 
-  if (loadingSub || loadingSum) {
+  if (loadingSub || loadingSum || loadingTop) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando resumos...</div></AppLayout>;
   }
 
@@ -168,7 +171,7 @@ export default function ResumosPage() {
     summaries.some(sum => sum.subjectId === s.id)
   );
 
-  // View a specific summary
+  // 1. View a specific summary
   if (selectedSummaryId) {
     const summary = summaries.find(s => s.id === selectedSummaryId);
     if (!summary) return null;
@@ -194,16 +197,11 @@ export default function ResumosPage() {
 
           <h1 className="text-xl font-bold text-foreground">{summary.title}</h1>
 
-          <div className="rounded-2xl bg-card border border-border p-5">
-            {summary.contentHtml ? (
-              <div className="prose prose-sm prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: summary.contentHtml }} />
-            ) : summary.contentMarkdown ? (
-              <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                {summary.contentMarkdown}
-              </div>
+          <div className="rounded-2xl bg-card border border-border p-5 md:p-8 shadow-sm">
+            {summary.contentMarkdown || summary.contentHtml ? (
+              <MarkdownRenderer content={summary.contentMarkdown || summary.contentHtml} />
             ) : (
-              <p className="text-sm text-muted-foreground">Conteúdo indisponível.</p>
+              <p className="text-sm text-muted-foreground text-center py-10">Conteúdo indisponível.</p>
             )}
           </div>
         </div>
@@ -211,10 +209,77 @@ export default function ResumosPage() {
     );
   }
 
-  // View summaries for a subject
+  // 2. View summaries for a selected topic
+  if (selectedTopicId) {
+    const topic = topics.find(t => String(t.id) === selectedTopicId);
+    const subject = subjects.find(s => s.id === selectedSubjectId);
+    const topicSummaries = summaries.filter(s => String(s.topicId) === selectedTopicId);
+
+    return (
+      <AppLayout>
+        <div className="px-4 pt-6 space-y-4 animate-slide-up">
+          <button onClick={() => setSelectedTopicId(null)}
+            className="flex items-center gap-1 text-sm text-primary font-medium">
+            <ChevronLeft className="h-4 w-4" /> Voltar
+          </button>
+
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-6 w-6 text-foreground" />
+            <h1 className="text-xl font-bold text-foreground">{topic?.name ?? "Resumos do Tema"}</h1>
+          </div>
+          
+          <p className="text-xs text-muted-foreground">Matéria: {subject?.name}</p>
+
+          <div className="space-y-2 mt-4">
+            {topicSummaries.map(summary => {
+              const isViewed = viewedSummaryIds.has(summary.id) || viewedSummaries.includes(summary.id);
+              
+              return (
+                <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
+                  className={cn("w-full flex items-center justify-between rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]", isViewed && "border-success/30 bg-success/5")}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg border", isViewed ? "bg-success/20 border-success/30" : "bg-primary/10 border-primary/20")}>
+                      {isViewed ? <CheckCircle className="h-5 w-5 text-success" /> : <BookOpen className="h-5 w-5 text-primary" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {summary.format === 'html' ? 'HTML' : summary.format === 'markdown' ? 'Markdown' : 'PDF'}
+                      </p>
+                    </div>
+                  </div>
+                  {isViewed && (
+                    <span className="text-[10px] font-bold text-success uppercase tracking-wider bg-success/10 px-2 py-1 rounded">
+                      Concluído
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            
+            {topicSummaries.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground">
+                Nenhum título disponível para este tema.
+              </div>
+            )}
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // 3. View Topics for a selected Subject
   if (selectedSubjectId) {
     const subject = subjects.find(s => s.id === selectedSubjectId);
-    const subjectSummaries = summaries.filter(s => s.subjectId === selectedSubjectId);
+    
+    // Filter topics that belong to this subject and have at least one summary
+    const subjectTopics = topics
+      .filter(t => String(t.subject_id) === selectedSubjectId)
+      .filter(t => summaries.some(sum => String(sum.topicId) === String(t.id)))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    // Pegamos também resumos da matéria que por algum erro/motivo não tenham tema (topicId null)
+    const floatingSummaries = summaries.filter(s => s.subjectId === selectedSubjectId && (!s.topicId));
 
     return (
       <AppLayout>
@@ -229,31 +294,65 @@ export default function ResumosPage() {
               const SubjectIcon = subject?.icon;
               return SubjectIcon ? <SubjectIcon className="h-6 w-6" /> : <BookOpenIcon className="h-6 w-6" />;
             })()}
-            <h1 className="text-xl font-bold text-foreground">{subject?.name ?? "Resumos"}</h1>
+            <h1 className="text-xl font-bold text-foreground">{subject?.name ?? "Temas"}</h1>
           </div>
+          <p className="text-sm text-muted-foreground">Escolha o tema que deseja estudar</p>
 
-          <div className="space-y-2">
-            {subjectSummaries.map(summary => (
-              <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
-                className="w-full flex items-center gap-3 rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20">
-                  <BookOpen className="h-5 w-5 text-primary" />
+          <div className="space-y-3 mt-4">
+            {subjectTopics.map(topic => {
+              const count = summaries.filter(s => String(s.topicId) === String(topic.id)).length;
+              return (
+                <button key={topic.id} onClick={() => setSelectedTopicId(String(topic.id))}
+                  className="w-full flex items-center gap-4 rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-muted border border-border">
+                    <Folder className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground text-sm">{topic.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{count} {count === 1 ? 'título' : 'títulos'}</p>
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Listar diretamente os resumos sem tema, caso existam, para que não fiquem órfãos */}
+            {floatingSummaries.length > 0 && (
+              <div className="pt-4 border-t border-border mt-6">
+                <p className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">Outros (Sem Tema Específico)</p>
+                <div className="space-y-2">
+                  {floatingSummaries.map(summary => {
+                    const isViewed = viewedSummaryIds.has(summary.id) || viewedSummaries.includes(summary.id);
+                    return (
+                      <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
+                        className={cn("w-full flex items-center justify-between rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]", isViewed && "border-success/30 bg-success/5")}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg border", isViewed ? "bg-success/20 border-success/30" : "bg-primary/10 border-primary/20")}>
+                            {isViewed ? <CheckCircle className="h-5 w-5 text-success" /> : <BookOpen className="h-5 w-5 text-primary" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{summary.format === 'markdown' ? 'Markdown' : 'O'}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {summary.format === 'html' ? 'HTML' : summary.format === 'markdown' ? 'Markdown' : 'PDF'}
-                  </p>
-                </div>
-              </button>
-            ))}
+              </div>
+            )}
+
+            {subjectTopics.length === 0 && floatingSummaries.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground">
+                Nenhum tema encontrado para esta matéria.
+              </div>
+            )}
           </div>
         </div>
       </AppLayout>
     );
   }
 
-  // Subjects list
+  // 4. Subjects list (Root level)
   return (
     <AppLayout>
       <div className="px-4 pt-6 space-y-4 animate-slide-up">
@@ -263,7 +362,7 @@ export default function ResumosPage() {
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Conteúdo teórico organizado por matéria. Toque para ler.
+          Conteúdo teórico organizado por matéria. Toque numa matéria para ver os temas.
         </p>
 
         <div className="space-y-3">

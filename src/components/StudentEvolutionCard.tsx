@@ -1,9 +1,11 @@
 // StudentEvolutionCard.tsx - Card de Evolução do Aluno para a página inicial
 
-import { useMemo } from "react";
-import { Target, Calendar, BookOpen, Layers, FileText, TrendingUp, Award } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Target, Calendar, BookOpen, Layers, FileText, TrendingUp, Award, Edit2, Check, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { StudentEvolution, getDailyMotivationalPhrase } from "@/hooks/useStudentEvolution";
+import { StudentEvolution, getDailyMotivationalPhrase, useUpdateExamDate } from "@/hooks/useStudentEvolution";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 interface StudentEvolutionCardProps {
   evolution: StudentEvolution | undefined;
@@ -12,6 +14,40 @@ interface StudentEvolutionCardProps {
 
 export function StudentEvolutionCard({ evolution, isLoading }: StudentEvolutionCardProps) {
   const dailyPhrase = useMemo(() => getDailyMotivationalPhrase(), []);
+  const { user } = useAuth();
+  const updateExamDate = useUpdateExamDate();
+  const [isEditingDate, setIsEditingDate] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+
+  const handleSaveDate = () => {
+    if (!user?.id || !dateInput) return;
+    updateExamDate.mutate(
+      { userId: user.id, examDate: dateInput },
+      {
+        onSuccess: () => {
+          toast.success("Data da prova salva com sucesso!");
+          setIsEditingDate(false);
+        },
+        onError: () => {
+          toast.error("Erro ao salvar a data da prova.");
+        },
+      }
+    );
+  };
+
+  const handleClearDate = () => {
+    if (!user?.id) return;
+    updateExamDate.mutate(
+      { userId: user.id, examDate: null },
+      {
+        onSuccess: () => {
+          toast.success("Data da prova removida.");
+          setIsEditingDate(false);
+          setDateInput("");
+        },
+      }
+    );
+  };
 
   if (isLoading) {
     return (
@@ -39,11 +75,64 @@ export function StudentEvolutionCard({ evolution, isLoading }: StudentEvolutionC
           <h3 className="font-bold text-foreground text-lg">Sua Jornada</h3>
         </div>
         
-        <div className="p-3 rounded-xl bg-card/80 border border-border mb-4">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span className="text-sm">Data da prova não cadastrada</span>
-          </div>
+        {/* Exam date section - mesmo sem dados */}
+        <div className="mb-4 p-3 rounded-xl bg-card/80 border border-border">
+          {isEditingDate ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Informe a data da sua prova:</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateInput}
+                  onChange={(e) => setDateInput(e.target.value)}
+                  className="flex-1 text-sm rounded-lg border border-border bg-background px-3 py-1.5 text-foreground"
+                />
+                <button onClick={handleSaveDate} disabled={!dateInput || updateExamDate.isPending} className="p-1.5 rounded-lg bg-success/20 text-success hover:bg-success/30">
+                  <Check className="h-4 w-4" />
+                </button>
+                <button onClick={() => setIsEditingDate(false)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : evolution?.examDate ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                {evolution.examPassed ? (
+                  <span className="text-sm font-medium text-destructive">A data da prova já passou</span>
+                ) : evolution.daysUntilExam !== null && evolution.daysUntilExam > 0 ? (
+                  <span className="text-sm text-muted-foreground">Prova em:</span>
+                ) : (
+                  <span className="text-sm font-medium text-warning">Prova é hoje! Boa sorte!</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!evolution.examPassed && evolution.daysUntilExam !== null && evolution.daysUntilExam > 0 && (
+                  <div className="text-right">
+                    <span className="text-lg font-bold text-primary">{evolution.daysUntilExam} dias</span>
+                    <span className="text-xs text-muted-foreground ml-1">({evolution.examDateFormatted})</span>
+                  </div>
+                )}
+                <button onClick={() => { setDateInput(evolution.examDate || ""); setIsEditingDate(true); }} className="p-1 text-muted-foreground hover:text-primary">
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingDate(true)}
+              className="w-full flex items-center gap-3 text-left group"
+            >
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/20 transition-colors">
+                <Calendar className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-primary group-hover:underline">Cadastre a data da sua prova</p>
+                <p className="text-[10px] text-muted-foreground">Acompanhe seu progresso até a aprovação!</p>
+              </div>
+            </button>
+          )}
         </div>
 
         <div className="text-center py-4">
@@ -65,36 +154,66 @@ export function StudentEvolutionCard({ evolution, isLoading }: StudentEvolutionC
         <h3 className="font-bold text-foreground text-lg">Sua Jornada</h3>
       </div>
 
-      {/* Contagem regressiva */}
+      {/* Contagem regressiva / Data da Prova */}
       <div className="mb-4 p-3 rounded-xl bg-card/80 border border-border">
-        {evolution.examDate ? (
-          evolution.examPassed ? (
-            <div className="flex items-center gap-2 text-destructive">
-              <Calendar className="h-4 w-4" />
-              <span className="text-sm font-medium">A data da prova já passou</span>
+        {isEditingDate ? (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Informe a data da sua prova:</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateInput}
+                onChange={(e) => setDateInput(e.target.value)}
+                className="flex-1 text-sm rounded-lg border border-border bg-background px-3 py-1.5 text-foreground"
+              />
+              <button onClick={handleSaveDate} disabled={!dateInput || updateExamDate.isPending} className="p-1.5 rounded-lg bg-success/20 text-success hover:bg-success/30">
+                <Check className="h-4 w-4" />
+              </button>
+              <button onClick={() => setIsEditingDate(false)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80">
+                <X className="h-4 w-4" />
+              </button>
+              {evolution.examDate && (
+                <button onClick={handleClearDate} className="text-[10px] text-destructive hover:underline">Remover</button>
+              )}
             </div>
-          ) : evolution.daysUntilExam !== null && evolution.daysUntilExam > 0 ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                <span className="text-sm text-muted-foreground">Prova em:</span>
-              </div>
-              <div className="text-right">
-                <span className="text-lg font-bold text-primary">{evolution.daysUntilExam} dias</span>
-                <span className="text-xs text-muted-foreground ml-2">({evolution.examDateFormatted})</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-warning">
-              <Calendar className="h-4 w-4" />
-              <span className="text-sm font-medium">Prova é hoje! Boa sorte!</span>
-            </div>
-          )
-        ) : (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span className="text-sm">Data da prova não cadastrada</span>
           </div>
+        ) : evolution.examDate ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              {evolution.examPassed ? (
+                <span className="text-sm font-medium text-destructive">A data da prova já passou</span>
+              ) : evolution.daysUntilExam !== null && evolution.daysUntilExam > 0 ? (
+                <span className="text-sm text-muted-foreground">Prova em:</span>
+              ) : (
+                <span className="text-sm font-medium text-warning">Prova é hoje! Boa sorte!</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {!evolution.examPassed && evolution.daysUntilExam !== null && evolution.daysUntilExam > 0 && (
+                <div className="text-right">
+                  <span className="text-lg font-bold text-primary">{evolution.daysUntilExam} dias</span>
+                  <span className="text-xs text-muted-foreground ml-1">({evolution.examDateFormatted})</span>
+                </div>
+              )}
+              <button onClick={() => { setDateInput(evolution.examDate || ""); setIsEditingDate(true); }} className="p-1 text-muted-foreground hover:text-primary">
+                <Edit2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsEditingDate(true)}
+            className="w-full flex items-center gap-3 text-left group"
+          >
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/20 transition-colors">
+              <Calendar className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-primary group-hover:underline">Cadastre a data da sua prova</p>
+              <p className="text-[10px] text-muted-foreground">Acompanhe seu progresso até a aprovação!</p>
+            </div>
+          </button>
         )}
       </div>
 

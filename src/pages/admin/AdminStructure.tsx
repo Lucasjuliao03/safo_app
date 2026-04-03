@@ -404,6 +404,7 @@ function SubjectsManager() {
 function TopicsManager() {
   const { data: topics = [], isLoading } = useAdminTopics();
   const { data: subjects = [] } = useAdminSubjects();
+  const { data: courses = [] } = useAdminCourses();
   const createMutation = useCreateTopic();
   const updateMutation = useUpdateTopic();
   const deleteMutation = useDeleteTopic();
@@ -413,14 +414,15 @@ function TopicsManager() {
   const [description, setDescription] = useState("");
   const [subjectId, setSubjectId] = useState<number>(0);
   const [sortOrder, setSortOrder] = useState<number>(0);
+  const [targetCourseIds, setTargetCourseIds] = useState<number[]>([]);
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando temas...</div>;
 
-  const handleCreate = () => { if (!name.trim() || !subjectId) return; createMutation.mutate({ name, description, subjectId, sortOrder }); setName(""); setDescription(""); setSortOrder(0); };
-  const handleUpdate = (id: number) => { if (!name.trim()) return; updateMutation.mutate({ id, name, description, sortOrder }); setEditingId(null); };
+  const handleCreate = () => { if (!name.trim() || !subjectId) return; createMutation.mutate({ name, description, subjectId, sortOrder, targetCourseIds }); setName(""); setDescription(""); setSortOrder(0); setTargetCourseIds([]); };
+  const handleUpdate = (id: number) => { if (!name.trim()) return; updateMutation.mutate({ id, name, description, sortOrder, targetCourseIds }); setEditingId(null); setTargetCourseIds([]); };
   const handleDelete = (id: number) => { if (confirm("Apagar tema?")) deleteMutation.mutate(id); };
-  const startEdit = (t: any) => { setEditingId(t.id); setName(t.name); setDescription(t.description || ""); setSubjectId(t.subject_id); setSortOrder(t.sort_order || 0); };
-  const cancelEdit = () => { setEditingId(null); setName(""); setDescription(""); setSortOrder(0); };
+  const startEdit = (t: any) => { setEditingId(t.id); setName(t.name); setDescription(t.description || ""); setSubjectId(t.subject_id); setSortOrder(t.sort_order || 0); setTargetCourseIds(t.target_course_ids || []); };
+  const cancelEdit = () => { setEditingId(null); setName(""); setDescription(""); setSortOrder(0); setTargetCourseIds([]); };
 
   return (
     <div className="space-y-4">
@@ -435,6 +437,22 @@ function TopicsManager() {
           </select>
           <input type="number" placeholder="Ordem" value={sortOrder} onChange={e => setSortOrder(Number(e.target.value))} className="text-sm rounded-lg border border-border bg-card px-3 py-2" />
         </div>
+        
+        <div className="mt-2 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground">Restringir aos Cursos (Deixe vazio para herdar da Matéria)</p>
+          <div className="flex flex-wrap gap-2">
+            {courses.map(c => (
+              <label key={c.id} className="flex items-center gap-1.5 text-xs bg-muted/50 px-2.5 py-1.5 border border-border rounded-lg cursor-pointer hover:bg-muted">
+                <input type="checkbox" checked={targetCourseIds.includes(c.id)} onChange={(e) => {
+                  if (e.target.checked) setTargetCourseIds([...targetCourseIds, c.id]);
+                  else setTargetCourseIds(targetCourseIds.filter(id => id !== c.id));
+                }} />
+                {c.name}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-center justify-end gap-2">
           {editingId && <button onClick={cancelEdit} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted">Cancelar</button>}
           <button onClick={() => editingId ? handleUpdate(editingId) : handleCreate()} disabled={!subjectId || createMutation.isPending || updateMutation.isPending} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-xp text-xp-foreground">
@@ -447,7 +465,14 @@ function TopicsManager() {
           <div key={topic.id} className="p-4 rounded-lg border border-border flex justify-between items-center">
             <div>
               <p className="font-bold text-foreground">{topic.name}</p>
-              <p className="text-xs text-muted-foreground">Matéria: {(topic as any).subjects?.name}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-muted-foreground">Matéria: {(topic as any).subjects?.name}</p>
+                {topic.target_course_ids && topic.target_course_ids.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                    {topic.target_course_ids.length} Cursos
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted text-muted-foreground border mr-2">Ordem: {topic.sort_order}</span>

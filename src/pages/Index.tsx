@@ -18,7 +18,7 @@ export default function HomePage() {
 
   const { data: courses = [], isLoading: isLoadingCourses } = useCourses();
   const { data: subjects = [], isLoading: isLoadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: questions = [], isLoading: isLoadingQ } = useQuestions();
+  const { data: questions = [], isLoading: isLoadingQ } = useQuestions(isAdmin ? undefined : courseId);
   const { data: profile } = useUserProfile(user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [] } = useUserQuestionStats(user?.id);
@@ -39,7 +39,7 @@ export default function HomePage() {
     isCompleted,
     hasStarted,
     startMission,
-  } = useDailyMission(user?.id as string | undefined);
+  } = useDailyMission(user?.id as string | undefined, courseId);
 
   const course = courses.find((c) => c.id === courseId);
 

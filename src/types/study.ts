@@ -25,6 +25,7 @@ export interface Question {
   options: QuestionOption[];
   correctOption: string;
   explanation: string;
+  format?: "multiple_choice" | "true_false";
 }
 
 export interface Flashcard {

@@ -29,12 +29,12 @@ export interface MissionProgress {
   remaining: number;
 }
 
-export function useDailyMission(userId: string | undefined) {
+export function useDailyMission(userId: string | undefined, courseId: string | null) {
   const queryClient = useQueryClient();
 
   // Buscar missão do dia
   const { data: mission, isLoading, refetch } = useQuery({
-    queryKey: ['daily-mission', userId],
+    queryKey: ['daily-mission', userId, courseId],
     queryFn: async (): Promise<DailyMission | null> => {
       if (!userId) return null;
       
@@ -55,7 +55,7 @@ export function useDailyMission(userId: string | undefined) {
       
       // Se não existir, criar nova
       if (!data) {
-        const newMission = await createMission(userId);
+        const newMission = await createMission(userId, courseId);
         return newMission;
       }
       
@@ -66,7 +66,7 @@ export function useDailyMission(userId: string | undefined) {
   });
 
   // Criar missão
-  const createMission = async (uid: string): Promise<DailyMission> => {
+  const createMission = async (uid: string, courseId: string | null): Promise<DailyMission> => {
     const today = new Date().toISOString().split('T')[0];
     
     const { data: questions } = await supabase
