@@ -7,8 +7,20 @@ import { registerRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { clientsClaim } from 'workbox-core';
 
 declare let self: ServiceWorkerGlobalScope;
+
+// Ativar imediatamente a nova versão
+self.skipWaiting();
+clientsClaim();
+
+// Permite acionar o update pelo frontend
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
 
 // ═══════════════════════════════════════════════════════ //
 //  PRECACHING (injetado pelo VitePWA no build)           //
@@ -19,17 +31,8 @@ precacheAndRoute(self.__WB_MANIFEST);
 //  RUNTIME CACHING                                       //
 // ═══════════════════════════════════════════════════════ //
 
-// Supabase API — Network First (busca rede, fallback para cache)
-registerRoute(
-  ({ url }) => url.hostname.includes('supabase.co'),
-  new NetworkFirst({
-    cacheName: 'supabase-cache',
-    plugins: [
-      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 }),
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
-    ],
-  })
-);
+// Removido o cache agressivo para rotas do Supabase
+// Não cacheamos chamadas de API, Auth, e Perfil para garantir dados reais.
 
 // Google Fonts — Cache First
 registerRoute(
@@ -68,6 +71,7 @@ self.addEventListener('push', (event: PushEvent) => {
     data: {
       url: payload.url || '/',
     },
+    // @ts-ignore: TS DOM lib missing vibrate in NotificationOptions
     vibrate: [100, 50, 100],
     requireInteraction: false,
   };
