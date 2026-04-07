@@ -11,6 +11,7 @@ import { useDailyMission } from "@/hooks/useMission";
 import { useUserStreakStats } from "@/hooks/useUserStreakStats";
 import { StudentEvolutionCard } from "@/components/StudentEvolutionCard";
 import { useStudentEvolution } from "@/hooks/useStudentEvolution";
+import { formatDisplayName } from "@/hooks/useNickname";
 
 export default function HomePage() {
   const { user, isApproved, isAdmin } = useAuth();
@@ -72,7 +73,7 @@ export default function HomePage() {
     <AppLayout>
       <div className="px-4 pt-6 space-y-4 animate-slide-up">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Olá, {user?.name ?? "Recruta"}! 🎯</h1>
+          <h1 className="text-2xl font-bold text-foreground">Olá, {formatDisplayName(profile?.full_name || undefined, profile?.nickname || undefined)}! 🎯</h1>
           <div className="flex items-center gap-1.5 mt-0.5">
             <GraduationCap className="h-3.5 w-3.5 text-primary" />
             <p className="text-sm text-primary font-medium">{course?.name ?? (isAdmin ? "Administrador" : "Sem Curso")}</p>

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { User } from "@/types/study";
 import * as authService from "@/services/authService";
 import { supabase } from "@/lib/supabase";
+import { loadAvailableAvatars } from "@/hooks/useAvatar";
 
 interface AuthContextType {
   user: User | null;
@@ -39,6 +40,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Carregar avatares em background
+    loadAvailableAvatars();
+    
     // Initial fetch
     refreshUser().finally(() => setLoading(false));
 

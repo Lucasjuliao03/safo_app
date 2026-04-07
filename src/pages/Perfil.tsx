@@ -2,17 +2,25 @@ import { AppLayout } from "@/components/AppLayout";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildStats, getSubjectPerformance, ranks } from "@/services/statsService";
-import { User, ChevronRight, Medal, Flame, Zap, LogOut, TrendingUp, Trophy, BookOpen, Layers, FileText } from "lucide-react";
+import { User, ChevronRight, Medal, Flame, Zap, LogOut, TrendingUp, Trophy, BookOpen, Layers, FileText, Edit2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useSubjects, useQuestions, useUserProfile, useUserProductivity, useUserQuestionStats } from "@/hooks/useStudyData";
+import { useSubjects, useQuestions, useUserProductivity, useUserQuestionStats } from "@/hooks/useStudyData";
 import { useAchievementStats } from "@/hooks/useAchievements";
 import { useUserStreakStats } from "@/hooks/useUserStreakStats";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { PerformanceCard } from "@/components/PerformanceCard";
+import { EditNickname } from "@/components/EditNickname";
+import { AvatarSelector } from "@/components/AvatarSelector";
+import { getAvatarUrl } from "@/hooks/useAvatar";
+import { formatDisplayName } from "@/hooks/useNickname";
+import { useUserProfile } from "@/hooks/useStudyData";
+import { useState } from "react";
 
 export default function PerfilPage() {
   const { user, isAdmin, logout } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: questions = [], isLoading: loadingQ } = useQuestions(isAdmin ? undefined : courseId);
@@ -91,12 +99,41 @@ export default function PerfilPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/15 border border-primary/25">
-              <User className="h-7 w-7 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">{user?.name ?? "Recruta"}</h1>
+            <button onClick={() => setShowAvatarModal(true)} className="relative">
+              <img 
+                src={getAvatarUrl(profile?.avatar)}
+                alt="Avatar"
+                className="w-20 h-20 rounded-2xl object-contain border-2 border-primary/25 bg-muted/30"
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (img.src.endsWith('.png')) {
+                    img.src = img.src.replace('.png', '.svg');
+                  } else {
+                    img.src = getAvatarUrl('default');
+                  }
+                }}
+              />
+              <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-1.5">
+                <Edit2 className="h-3 w-3 text-white" />
+              </div>
+            </button>
+            <div className="flex-1">
+              <h1 className="text-lg font-bold text-foreground">{formatDisplayName(profile?.full_name || undefined, profile?.nickname || undefined)}</h1>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
+              <div className="flex gap-2 mt-1">
+                <button 
+                  onClick={() => setShowNicknameModal(true)}
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <Edit2 className="h-3 w-3" /> Nome
+                </button>
+                <button 
+                  onClick={() => setShowAvatarModal(true)}
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <Edit2 className="h-3 w-3" /> Avatar
+                </button>
+              </div>
             </div>
           </div>
           <button onClick={() => logout()}
@@ -104,6 +141,9 @@ export default function PerfilPage() {
             <LogOut className="h-3.5 w-3.5" /> Sair
           </button>
         </div>
+
+        <EditNickname open={showNicknameModal} onOpenChange={setShowNicknameModal} />
+        <AvatarSelector open={showAvatarModal} onOpenChange={setShowAvatarModal} userId={user?.id} />
 
         {isAdmin && (
           <Link to="/admin"
