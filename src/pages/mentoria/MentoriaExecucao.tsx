@@ -15,12 +15,15 @@ export default function MentoriaExecucao() {
   const localToday = new Date();
   const today = localToday.toISOString().split('T')[0];
   
-  const [selectedDate, setSelectedDate] = useState(today);
+  const searchParams = new URLSearchParams(window.location.search);
+  const initialDate = searchParams.get('date') || today;
+  
+  const [selectedDate, setSelectedDate] = useState(initialDate);
   
   const daysHorizon = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(localToday.getDate() + i - 1); // Show Yesterday, Today, and next 5 days
-    return d.toISOString().split('T')[0];
+    const baseDate = new Date(selectedDate + 'T12:00:00Z');
+    baseDate.setDate(baseDate.getDate() + i - 3); // Center dynamically (-3 to +3 days)
+    return baseDate.toISOString().split('T')[0];
   });
 
   const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);

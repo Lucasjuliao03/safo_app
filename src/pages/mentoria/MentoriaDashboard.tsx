@@ -223,10 +223,25 @@ export default function MentoriaDashboard() {
                    }
                 }
                 
+                const primaryTask = tasksForDay[0];
+                let topicName = "";
+                if (primaryTask) {
+                   const titleParts = primaryTask.title.split(': ');
+                   topicName = titleParts.length > 1 ? titleParts[1] : primaryTask.title;
+                   // Remove terms like "Revisão Ativa" or "Teoria" when they might just be part of the title
+                }
+
                 return (
-                  <div key={dayDate} className={cn("aspect-square flex items-center justify-center rounded-lg text-xs transition-all", bgColor)}>
-                    {dayDate}
-                  </div>
+                  <Link 
+                    to={`/mentoria/execucao?date=${dateKey}`}
+                    key={dayDate} 
+                    className={cn("aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-all hover:scale-105 active:scale-95 hover:shadow-md overflow-hidden p-0.5", bgColor)}
+                  >
+                    <span className="font-bold">{dayDate}</span>
+                    {topicName && (
+                       <span className="text-[7px] leading-[1] truncate w-full text-center mt-0.5 opacity-90 block px-0.5" title={topicName}>{topicName}</span>
+                    )}
+                  </Link>
                 );
               });
               
@@ -241,68 +256,51 @@ export default function MentoriaDashboard() {
           </div>
         </section>
 
-        {/* Diagnóstico Base */}
-        <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-2 border-b border-border pb-3">
-            <User className="h-4 w-4 text-primary" />
-            <h2 className="font-bold text-sm">Seu Diagnóstico Base</h2>
-          </div>
-          
-          {diagnostico ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase">Objetivo / Alvo</p>
-                  <p className="font-bold text-sm bg-muted/50 inline-block px-2 py-1 rounded-md mt-1">{diagnostico.objective || "Não definido"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase">Tempo Disponível</p>
-                  <p className="font-bold text-sm text-foreground flex items-center gap-1 mt-1">
-                    <Clock className="h-3.5 w-3.5 opacity-50" /> {diagnostico.daily_available_minutes || 0} min / dia
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase mb-2">Matérias Prioritárias</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {(diagnostico.weak_subjects || []).map((subj: string, i: number) => (
-                    <span key={i} className="text-xs bg-destructive/10 text-destructive border border-destructive/20 px-2 py-1 rounded-md font-semibold">{subj}</span>
-                  ))}
-                  {(diagnostico.weak_subjects?.length === 0) && <span className="text-xs text-muted-foreground">Nenhuma reportada</span>}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">O seu mentor ainda não preencheu o seu diagnóstico de entrada.</p>
-          )}
-        </section>
-
-        {/* Estratégia de Batalha (Operational Plan) */}
+        {/* Estratégia de Batalha & Info */}
         <section className="bg-card border border-border rounded-3xl p-5 space-y-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
             <Target className="h-32 w-32" />
           </div>
 
-          <div className="flex items-center gap-2 mb-2 border-b border-border pb-3">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            <h2 className="font-bold text-sm">Plano de Ação</h2>
+          <div className="flex items-center justify-between mb-2 border-b border-border pb-3 z-10 relative">
+             <div className="flex items-center gap-2">
+               <TrendingUp className="h-4 w-4 text-primary" />
+               <h2 className="font-bold text-sm">Sua Estratégia de Batalha</h2>
+             </div>
+             {diagnostico?.daily_available_minutes && (
+                <span className="text-xs bg-muted/50 px-2 py-1 rounded shadow-sm text-muted-foreground flex items-center gap-1 font-bold">
+                  <Clock className="w-3 h-3" /> {diagnostico.daily_available_minutes}min/dia
+                </span>
+             )}
           </div>
           
           {estrategia ? (
             <div className="space-y-3 z-10 relative">
                <div className="flex justify-between items-center py-2 border-b border-border/50">
                  <span className="text-sm text-muted-foreground">Padrão de Revisão</span>
-                 <span className="font-bold text-sm">{estrategia.review_pattern}</span>
+                 <span className="font-bold text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">{estrategia.review_pattern}</span>
                </div>
                <div className="flex justify-between items-center py-2 border-b border-border/50">
-                 <span className="text-sm text-muted-foreground">Meta Limite (Questões Semanais)</span>
-                 <span className="font-bold text-sm">{estrategia.weekly_questions_target}</span>
+                 <span className="text-sm text-muted-foreground">Meta (Questões Sem.)</span>
+                 <span className="font-bold text-xs">{estrategia.weekly_questions_target}</span>
                </div>
-               <div className="flex justify-between items-center py-2">
-                 <span className="text-sm text-muted-foreground">Frequência de Simulados</span>
-                 <span className="font-bold text-sm">A cada {estrategia.simulate_frequency_days} dias</span>
+               <div className="flex justify-between items-center py-2 border-b border-border/50">
+                 <span className="text-sm text-muted-foreground">Simulados</span>
+                 <span className="font-bold text-xs">A cada {estrategia.simulate_frequency_days} dias</span>
                </div>
+               
+               {/* Diagnostic short info */}
+               {diagnostico && (
+                 <div className="pt-2">
+                   <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1.5 flex items-center gap-1"><User className="w-3 h-3"/> Dificuldades (Prioridade Alta)</p>
+                   <div className="flex flex-wrap gap-1">
+                     {(diagnostico.weak_subjects || []).map((subj: string, i: number) => (
+                       <span key={i} className="text-[10px] bg-destructive/10 text-destructive border border-destructive/20 px-1.5 py-0.5 rounded-sm font-semibold">{subj}</span>
+                     ))}
+                     {(diagnostico.weak_subjects?.length === 0) && <span className="text-[10px] text-muted-foreground">Nenhuma mapeada</span>}
+                   </div>
+                 </div>
+               )}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">Sua estratégia macro ainda está sendo desenhada.</p>
