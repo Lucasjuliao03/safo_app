@@ -29,6 +29,7 @@ import AdminQuestions from "./pages/admin/AdminQuestions";
 import AdminContent from "./pages/admin/AdminContent";
 import AdminMessages from "./pages/admin/AdminMessages";
 import AdminPush from "./pages/admin/AdminPush";
+import AdminPlansPage from "./pages/admin/AdminPlansPage";
 
 const queryClient = new QueryClient();
 
@@ -98,6 +99,7 @@ const AppRoutes = () => {
           <Route path="/painel/conteudo" element={<ProtectedRoute><AdminRoute><AdminContent /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/mensagens" element={<ProtectedRoute><AdminRoute><AdminMessages /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/push" element={<ProtectedRoute><AdminRoute><AdminPush /></AdminRoute></ProtectedRoute>} />
+          <Route path="/painel/planos" element={<ProtectedRoute><AdminRoute><AdminPlansPage /></AdminRoute></ProtectedRoute>} />
           
           <Route path="*" element={<NotFound />} />
         </Routes>

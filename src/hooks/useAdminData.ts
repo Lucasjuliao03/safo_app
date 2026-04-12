@@ -614,3 +614,43 @@ export function useRemoveEdictSubject() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin_edict_subjects"] }),
   });
 }
+
+// ---------------------------------------------------------
+// SUBSCRIPTIONS (PLANS) MODULE
+// ---------------------------------------------------------
+
+export function useAdminPlans() {
+  return useQuery({
+    queryKey: ["admin_plans"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("plans")
+        .select("*")
+        .order("price_cents", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useCreatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (plan: { code: string; name: string; description?: string; price_cents: number; duration_days: number; is_active?: boolean }) => {
+      const { error } = await supabase.from("plans").insert(plan);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin_plans"] }),
+  });
+}
+
+export function useUpdatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { id: string; data: any }) => {
+      const { error } = await supabase.from("plans").update(vars.data).eq("id", vars.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin_plans"] }),
+  });
+}

@@ -7,7 +7,10 @@ import { User } from "@/types/study";
 import { Shield, Check, X, Users, RefreshCw, Trash2, Link2, BookOpen, GraduationCap, Plus, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tab = "users" | "vincular";
+import AdminPlans from "./admin/AdminPlans";
+import { Copy } from "lucide-react"; // Import something if needed
+
+type Tab = "users" | "vincular" | "planos";
 
 export default function AdminPage() {
   const { user: admin } = useAuth();
@@ -112,6 +115,15 @@ export default function AdminPage() {
             )}
           >
             <Link2 className="h-4 w-4" /> Vincular Matérias
+          </button>
+          <button
+            onClick={() => setTab("planos")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition-all",
+              tab === "planos" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground"
+            )}
+          >
+            <Copy className="h-4 w-4" /> Planos
           </button>
         </div>
 
@@ -298,6 +310,11 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ===== TAB: PLANOS ===== */}
+        {tab === "planos" && (
+          <AdminPlans />
         )}
       </div>
     </AppLayout>

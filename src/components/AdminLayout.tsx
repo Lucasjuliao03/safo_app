@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Users, Layers, BookOpen, FileText, MessageSquare, Bell, LogOut, Menu, X, Shield } from "lucide-react";
+import { LayoutDashboard, Users, Layers, BookOpen, FileText, MessageSquare, Bell, LogOut, Menu, X, Shield, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/services/authService";
 
@@ -15,6 +15,7 @@ const navItems = [
   { path: "/painel/estrutura", label: "Cursos & Estrutura", icon: Layers },
   { path: "/painel/questoes", label: "Questões", icon: BookOpen },
   { path: "/painel/conteudo", label: "Flashcards e Resumos", icon: FileText },
+  { path: "/painel/planos", label: "Planos", icon: Copy },
   { path: "/painel/mensagens", label: "Mensagens & Avisos", icon: MessageSquare },
   { path: "/painel/push", label: "Push Notifications", icon: Bell },
 ];
