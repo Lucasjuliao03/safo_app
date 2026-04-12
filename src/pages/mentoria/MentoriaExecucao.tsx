@@ -1,13 +1,44 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMentoriaStatus, useMentoriaTasks, useCheckInTask } from "@/hooks/useMentoriaData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
-import { CheckCircle, Clock, FileText, ChevronLeft, CalendarClock, MessageSquare } from "lucide-react";
+import { CheckCircle, Clock, FileText, ChevronLeft, CalendarClock, MessageSquare, Play, Square, Timer } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { MentoriaTarefa } from "@/services/mentoriaService";
+
+// Helper for Audio (Web Audio API)
+const playBeep = (type: 'start' | 'alarm' = 'start') => {
+  try {
+    const actx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = actx.createOscillator();
+    const gainNode = actx.createGain();
+    
+    osc.connect(gainNode);
+    gainNode.connect(actx.destination);
+    
+    if (type === 'start') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, actx.currentTime);
+      gainNode.gain.setValueAtTime(0.1, actx.currentTime);
+      osc.start();
+      osc.stop(actx.currentTime + 0.15);
+    } else {
+      // Alarm
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(600, actx.currentTime);
+      osc.frequency.setValueAtTime(800, actx.currentTime + 0.2);
+      osc.frequency.setValueAtTime(600, actx.currentTime + 0.4);
+      gainNode.gain.setValueAtTime(0.1, actx.currentTime);
+      osc.start();
+      osc.stop(actx.currentTime + 0.8);
+    }
+  } catch (e) {
+    console.error("Audio API not supported or blocked");
+  }
+};
 
 export default function MentoriaExecucao() {
   const { user } = useAuth();
@@ -35,6 +66,55 @@ export default function MentoriaExecucao() {
   const [actualQuestions, setActualQuestions] = useState("");
   const [studentNotes, setStudentNotes] = useState("");
 
+  // Stopwatch state
+  const [isRunning, setIsRunning] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [hasNotified, setHasNotified] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    if (isRunning) {
+      interval = setInterval(() => {
+        setElapsedSeconds(prev => {
+          const next = prev + 1;
+          
+          if (activeTask && activeTask.planned_minutes) {
+             const limitSeconds = activeTask.planned_minutes * 60;
+             if (next >= limitSeconds && !hasNotified) {
+                setHasNotified(true);
+                playBeep('alarm');
+                toast.success("Meta de tempo atingida! Você pode continuar ou pausar o cronômetro.");
+             }
+          }
+          
+          return next;
+        });
+      }, 1000);
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isRunning, activeTask, hasNotified]);
+
+  const toggleTimer = () => {
+    if (!isRunning) {
+       playBeep('start');
+       setIsRunning(true);
+    } else {
+       setIsRunning(false);
+       // Auto-fill actual_minutes rounded up using standard math
+       const m = Math.floor(elapsedSeconds / 60);
+       setActualMinutes(String(m > 0 ? m : 1));
+    }
+  };
+
+  const formatTime = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   if (loadingStatus || loadingTasks) {
     return <AppLayout><div className="flex justify-center p-8 text-muted-foreground">Carregando plano do dia...</div></AppLayout>;
   }
@@ -48,6 +128,11 @@ export default function MentoriaExecucao() {
     setActualMinutes(task.actual_minutes ? String(task.actual_minutes) : "");
     setActualQuestions(task.actual_questions ? String(task.actual_questions) : "");
     setStudentNotes(task.student_notes || "");
+    
+    // Reset timer on open
+    setIsRunning(false);
+    setElapsedSeconds(0);
+    setHasNotified(false);
   };
 
   const handleSaveCheckIn = (status: 'completed' | 'delayed') => {
@@ -95,9 +180,35 @@ export default function MentoriaExecucao() {
             </div>
 
             <div className="space-y-4 pt-2">
-              <h3 className="font-bold text-sm">Realidade do Estudo de Hoje</h3>
-              
-              <div className="space-y-1">
+              <div className="space-y-3 bg-card p-4 rounded-xl border border-border">
+                <div className="flex items-center justify-between pointer-events-none">
+                   <label className="text-xs font-semibold text-muted-foreground uppercase opacity-80 flex items-center gap-1">
+                     <Timer className="w-3.5 h-3.5" /> Cronômetro Ativo
+                   </label>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                   <div className="flex-1 bg-black/5 dark:bg-black/20 font-mono text-3xl font-black tracking-widest text-center py-2 rounded-xl text-primary border border-primary/20">
+                     {formatTime(elapsedSeconds)}
+                   </div>
+                   
+                   <button 
+                     onClick={toggleTimer}
+                     className={cn("w-14 h-14 rounded-xl flex items-center justify-center transition shadow-sm", 
+                       isRunning ? "bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20" 
+                                 : "bg-primary text-primary-foreground stroke-primary-foreground hover:opacity-90")}
+                   >
+                     {isRunning ? <Square className="w-6 h-6 fill-current"/> : <Play className="w-6 h-6 fill-current ml-1"/>}
+                   </button>
+                </div>
+                {elapsedSeconds > 0 && !isRunning && (
+                  <p className="text-[10px] text-muted-foreground text-center animate-fade-in pb-1">
+                     Tempo de {Math.floor(elapsedSeconds / 60)} min lançado no formulário abaixo.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1 pt-2">
                 <label className="text-xs font-semibold text-muted-foreground uppercase opacity-80 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" /> Tempo Líquido Gasto (minutos)
                 </label>

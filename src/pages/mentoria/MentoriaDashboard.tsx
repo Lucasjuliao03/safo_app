@@ -223,23 +223,47 @@ export default function MentoriaDashboard() {
                    }
                 }
                 
-                const primaryTask = tasksForDay[0];
-                let topicName = "";
-                if (primaryTask) {
-                   const titleParts = primaryTask.title.split(': ');
-                   topicName = titleParts.length > 1 ? titleParts[1] : primaryTask.title;
-                   // Remove terms like "Revisão Ativa" or "Teoria" when they might just be part of the title
+                const dayTopics = tasksForDay.map((task: any) => {
+                   const titleParts = task.title.split(': ');
+                   const rawTopic = titleParts.length > 1 ? titleParts[1].trim() : task.title.trim();
+                   
+                   const pureTopic = rawTopic.split(' - ').pop()?.trim() || rawTopic;
+                   
+                   const ignoreWords = ['de', 'do', 'da', 'dos', 'das', 'e', 'a', 'o', 'em', 'no', 'na'];
+                   const words = pureTopic.split(/\s+/).filter(w => w.trim().length > 0 && !ignoreWords.includes(w.toLowerCase()));
+                   
+                   let abbr = "";
+                   if (words.length > 1) {
+                      abbr = words.map(w => w[0].toUpperCase()).join('').substring(0, 4);
+                   } else if (words.length === 1) {
+                      abbr = words[0].substring(0, 3).toUpperCase();
+                   }
+                   
+                   return { full: pureTopic, abbr };
+                });
+
+                // Unique based on abbreviation to avoid "IP, IP, IP"
+                const uniqueTopicsMap = new Map();
+                for (const t of dayTopics) {
+                   if (!uniqueTopicsMap.has(t.abbr)) {
+                       uniqueTopicsMap.set(t.abbr, t);
+                   }
                 }
+                const uniqueTopics = Array.from(uniqueTopicsMap.values());
+                const fullTooltip = Array.from(new Set(dayTopics.map((t: any) => t.full))).join(', ');
 
                 return (
                   <Link 
                     to={`/mentoria/execucao?date=${dateKey}`}
                     key={dayDate} 
+                    title={fullTooltip}
                     className={cn("aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-all hover:scale-105 active:scale-95 hover:shadow-md overflow-hidden p-0.5", bgColor)}
                   >
                     <span className="font-bold">{dayDate}</span>
-                    {topicName && (
-                       <span className="text-[7px] leading-[1] truncate w-full text-center mt-0.5 opacity-90 block px-0.5" title={topicName}>{topicName}</span>
+                    {uniqueTopics.length > 0 && (
+                       <span className="text-[7px] leading-[1] truncate w-full text-center mt-0.5 opacity-90 block px-0.5">
+                         {uniqueTopics.map(t => t.abbr).join(', ')}
+                       </span>
                     )}
                   </Link>
                 );
