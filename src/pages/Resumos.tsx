@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubjects, useSummaries, useTopics, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
 import { canAccessSummaries, isUserActive } from "@/services/accessService";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
+import { useAccessStatus } from "@/hooks/useAccessStatus";
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { MarkdownRenderer } from "@/components/mdx/MarkdownRenderer";
@@ -120,6 +121,7 @@ export default function ResumosPage() {
           .eq('id', mission.id);
         qc.invalidateQueries({ queryKey: ['daily-mission'] });
         qc.invalidateQueries({ queryKey: ['userProductivity'] });
+        qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
         qc.invalidateQueries({ queryKey: ['studentEvolution'] });
         qc.invalidateQueries({ queryKey: ['summaries'] });
       } else if (mission) {
@@ -133,7 +135,9 @@ export default function ResumosPage() {
     }
   };
 
-  if (loadingSub || loadingSum || loadingTop) {
+  const accessStatus = useAccessStatus();
+  
+  if (loadingSub || loadingSum || loadingTop || accessStatus.isLoading) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando resumos...</div></AppLayout>;
   }
 
@@ -141,12 +145,13 @@ export default function ResumosPage() {
   
   const readCount = viewedSummaryIds.size;
   const summaryLimitReached = !canAccessSummaries(user, readCount);
+  const globalTrialExhausted = accessStatus.reason === "trial_exhausted";
 
   if (!active) {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
   }
 
-  if (summaryLimitReached && !user?.isApproved) {
+  if ((summaryLimitReached || globalTrialExhausted) && !user?.isApproved) {
     return <AppLayout><BlockedOverlay readCount={readCount} reason="limit_reached" /></AppLayout>;
   }
 

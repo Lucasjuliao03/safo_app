@@ -556,6 +556,7 @@ export function useRecordAnswer() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['userProfile'] });
       qc.invalidateQueries({ queryKey: ['userProductivity'] });
+      qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
       qc.invalidateQueries({ queryKey: ['userQuestionStats'] });
       qc.invalidateQueries({ queryKey: ['userAchievements'] });
       qc.invalidateQueries({ queryKey: ['daily-mission'] });
@@ -816,6 +817,7 @@ export function useRecordFlashcardReview() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['userProfile'] });
       qc.invalidateQueries({ queryKey: ['userProductivity'] });
+      qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
       qc.invalidateQueries({ queryKey: ['flashcards'] });
       qc.invalidateQueries({ queryKey: ['userAchievements'] });
       qc.invalidateQueries({ queryKey: ['daily-mission'] });
@@ -853,6 +855,28 @@ export function useUserProductivity(userId: string | undefined) {
         .eq('productivity_date', today)
         .maybeSingle();
       return data;
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 30, // 30s
+  });
+}
+
+export function useUserLifetimeUsage(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['userLifetimeUsage', userId],
+    queryFn: async () => {
+      if (!userId) return { questionsAndFlashcards: 0, summaries: 0 };
+      const { data } = await supabase
+        .from('user_daily_productivity')
+        .select('questions_answered, flashcards_reviewed, summaries_read')
+        .eq('user_id', userId);
+        
+      if (!data) return { questionsAndFlashcards: 0, summaries: 0 };
+      
+      return data.reduce((acc, row) => ({
+        questionsAndFlashcards: acc.questionsAndFlashcards + (row.questions_answered || 0) + (row.flashcards_reviewed || 0),
+        summaries: acc.summaries + (row.summaries_read || 0)
+      }), { questionsAndFlashcards: 0, summaries: 0 });
     },
     enabled: !!userId,
     staleTime: 1000 * 30, // 30s

@@ -12,7 +12,7 @@ import {
   isUserActive,
   FREE_USAGE_LIMIT,
 } from "@/services/accessService";
-import { useUserProductivity } from "@/hooks/useStudyData";
+import { useUserLifetimeUsage } from "@/hooks/useStudyData";
 
 export type AccessReason =
   | "admin"
@@ -34,7 +34,7 @@ export interface AccessStatus {
 
 export function useAccessStatus(): AccessStatus {
   const { user, isAdmin, loading: authLoading } = useAuth();
-  const { data: todayProd, isLoading: prodLoading } = useUserProductivity(
+  const { data: lifetimeProd, isLoading: prodLoading } = useUserLifetimeUsage(
     user?.id
   );
 
@@ -78,10 +78,10 @@ export function useAccessStatus(): AccessStatus {
       };
     }
 
-    // Conta uso de hoje (questões + flashcards) — lógica existente
-    const answeredCount = todayProd?.questions_answered ?? 0;
-    const flashcardsCount = todayProd?.flashcards_reviewed ?? 0;
-    const totalUsage = answeredCount + flashcardsCount;
+    // Conta uso na vida toda (questões + flashcards + resumos) para o Trial
+    const questionsAndFlashcards = lifetimeProd?.questionsAndFlashcards ?? 0;
+    const summariesCount = lifetimeProd?.summaries ?? 0;
+    const totalUsage = questionsAndFlashcards + summariesCount;
 
     const active = isUserActive(user);
     const isPaid = user.isApproved; // profiles.is_active
@@ -126,5 +126,5 @@ export function useAccessStatus(): AccessStatus {
       isOnTrial: true,
       isLoading: false,
     };
-  }, [user, isAdmin, authLoading, prodLoading, todayProd]);
+  }, [user, isAdmin, authLoading, prodLoading, lifetimeProd]);
 }
