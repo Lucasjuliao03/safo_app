@@ -180,12 +180,23 @@ export default function AdminMentoriaDashboard() {
                       <td className="px-6 py-4">
                          <span className={cn(
                            "font-semibold text-[10px] px-2 py-0.5 rounded-full border",
-                           aluno.status === 'active' ? "bg-success/15 text-success border-success/20" : "bg-muted text-muted-foreground border-border"
+                           aluno.status === 'active' ? "bg-success/15 text-success border-success/20" : 
+                           aluno.status === 'pending' ? "bg-warning/20 text-warning border-warning/30" : 
+                           "bg-muted text-muted-foreground border-border"
                          )}>
                            {aluno.status.toUpperCase()}
                          </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                         {aluno.status === 'pending' && (
+                           <button
+                             onClick={() => handleActivate(aluno.user_id)}
+                             disabled={activateMutation.isPending}
+                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-success text-success-foreground hover:opacity-90 transition-all"
+                           >
+                             Aprovar
+                           </button>
+                         )}
                          <Link 
                            to={`/painel/mentoria/aluno/${aluno.user_id}`}
                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all"

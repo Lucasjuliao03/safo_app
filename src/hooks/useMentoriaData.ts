@@ -151,10 +151,18 @@ export function useAdminGenerateTasks() {
       return mentoriaService.adminSaveTasks(tasks);
     },
     onSuccess: (_, variables) => {
-      // The array of tasks should all belong to the same user
       if (variables.length > 0) {
         qc.invalidateQueries({ queryKey: ['mentoria_tasks', variables[0].user_id] });
+        qc.invalidateQueries({ queryKey: ['admin_mentoring_tasks', variables[0].user_id] });
       }
     }
+  });
+}
+
+export function useAdminStudentTasks(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin_mentoring_tasks', userId],
+    queryFn: () => userId ? mentoriaService.getAllStudentTasks(userId) : [],
+    enabled: !!userId
   });
 }

@@ -7,12 +7,14 @@ import {
   useAdminUpsertDiagnostico,
   useAdminRegisterIntervention,
   useStudentInterventions,
-  useAdminGenerateTasks
+  useAdminGenerateTasks,
+  useAdminStudentTasks
 } from "@/hooks/useMentoriaData";
 import { useSubjects } from "@/hooks/useStudyData";
 import { TaskType, MentoriaTarefa } from "@/services/mentoriaService";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function AdminMentoriaAluno() {
@@ -23,12 +25,13 @@ export default function AdminMentoriaAluno() {
   const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(id);
   const { data: intervencoes } = useStudentInterventions(id);
   const { data: subjects = [] } = useSubjects();
+  const { data: historyTasks = [] } = useAdminStudentTasks(id);
   
   const diagMutation = useAdminUpsertDiagnostico();
   const interventionMutation = useAdminRegisterIntervention();
   const generateMutation = useAdminGenerateTasks();
 
-  const [activeTab, setActiveTab] = useState<'diagnostico' | 'plano' | 'intervencao'>('plano');
+  const [activeTab, setActiveTab] = useState<'diagnostico' | 'plano' | 'intervencao' | 'historico'>('plano');
   const [diagForm, setDiagForm] = useState({ objective: '', daily_available_minutes: 0, mentor_notes: '' });
   const [intervencaoForm, setIntervencaoForm] = useState({ reason: '', action_taken: '' });
 
@@ -171,6 +174,9 @@ export default function AdminMentoriaAluno() {
            <button onClick={() => setActiveTab('plano')} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'plano' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>
              Plano de Ação (V1)
            </button>
+           <button onClick={() => setActiveTab('historico')} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'historico' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>
+             Histórico de Lotes
+           </button>
            <button onClick={() => setActiveTab('intervencao')} className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'intervencao' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>
              Correção de Rota
            </button>
@@ -275,6 +281,62 @@ export default function AdminMentoriaAluno() {
                  <Play className="h-4 w-4" fill="currentColor" />
                  Gerar Plano e Agendar Lote
                </button>
+             </div>
+          </div>
+        )}
+
+        {activeTab === 'historico' && (
+          <div className="bg-card border border-border p-6 rounded-2xl space-y-6">
+             <div className="flex items-center gap-2 border-b border-border pb-3">
+                <Activity className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-lg">Histórico de Execução (Timeline)</h3>
+             </div>
+             <div>
+               <p className="text-sm text-muted-foreground mb-4">Total de missões mapeadas no lote atual do aluno: {historyTasks.length}</p>
+               
+               <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
+                 {/* Group by date in memory */}
+                 {Array.from(new Set(historyTasks.map((t: any) => t.planned_date))).sort((a: any, b: any) => new Date(a).getTime() - new Date(b).getTime()).map(date => (
+                    <div key={date as string} className="relative pl-6 border-l-2 border-border space-y-3 pb-6">
+                      <div className="absolute -left-2 top-0 bg-primary h-4 w-4 rounded-full border-4 border-card"></div>
+                      <h4 className="font-bold text-foreground text-sm flex items-center gap-2">
+                         {new Date((date as string) + 'T12:00:00Z').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                      </h4>
+                      <div className="grid gap-2">
+                         {historyTasks.filter((t: any) => t.planned_date === date).map((task: any) => (
+                           <div key={task.id} className="bg-muted/40 border border-border p-3 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm">
+                             <div>
+                                <p className="font-semibold">{task.title}</p>
+                                <p className="text-xs text-muted-foreground">{task.subjects?.name || "Matéria"} • {task.planned_minutes} minutos previstos</p>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                <span className={cn(
+                                  "text-xs px-2 py-1 rounded-md font-bold uppercase",
+                                  task.status === 'completed' ? "bg-success/20 text-success" :
+                                  task.status === 'skipped' ? "bg-destructive/20 text-destructive" :
+                                  "bg-warning/20 text-warning"
+                                )}>
+                                  {task.status === 'pending' ? 'Pendente' : task.status === 'skipped' ? 'Falhou / Pulou' : 'Concluído'}
+                                </span>
+                                {task.status === 'completed' && (
+                                   <div className="text-right text-xs bg-card border border-border p-1.5 rounded-md">
+                                     <p className="font-bold text-primary">{task.actual_minutes || 0} min reais</p>
+                                     <p className="text-muted-foreground">{task.actual_questions || 0} questões</p>
+                                   </div>
+                                )}
+                             </div>
+                           </div>
+                         ))}
+                      </div>
+                    </div>
+                 ))}
+                 
+                 {historyTasks.length === 0 && (
+                   <div className="text-center p-10 text-muted-foreground">
+                      Nenhuma missão foi agendada para este aluno ainda.
+                   </div>
+                 )}
+               </div>
              </div>
           </div>
         )}

@@ -180,6 +180,19 @@ export async function adminSaveTasks(tasks: Omit<MentoriaTarefa, 'id' | 'created
   return data;
 }
 
+export async function getAllStudentTasks(userId: string) {
+  const { data, error } = await supabase
+    .from('mentoria_tarefas_diarias')
+    .select(`*, subjects(name)`)
+    .eq('user_id', userId)
+    .order('planned_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(100);
+    
+  if (error) throw error;
+  return data || [];
+}
+
 export async function registrarIntervencao(userId: string, mentorId: string, reason: string, action_taken: string) {
   const { data, error } = await supabase
     .from('mentoria_intervencoes')

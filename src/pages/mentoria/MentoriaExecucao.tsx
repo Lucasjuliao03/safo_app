@@ -12,9 +12,19 @@ import { MentoriaTarefa } from "@/services/mentoriaService";
 export default function MentoriaExecucao() {
   const { user } = useAuth();
   
-  const today = new Date().toISOString().split('T')[0];
+  const localToday = new Date();
+  const today = localToday.toISOString().split('T')[0];
+  
+  const [selectedDate, setSelectedDate] = useState(today);
+  
+  const daysHorizon = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(localToday.getDate() + i - 1); // Show Yesterday, Today, and next 5 days
+    return d.toISOString().split('T')[0];
+  });
+
   const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);
-  const { data: tasks = [], isLoading: loadingTasks } = useMentoriaTasks(user?.id, today, today);
+  const { data: tasks = [], isLoading: loadingTasks } = useMentoriaTasks(user?.id, selectedDate, selectedDate);
   const checkInMutation = useCheckInTask();
 
   const [activeTask, setActiveTask] = useState<MentoriaTarefa | null>(null);
@@ -23,7 +33,7 @@ export default function MentoriaExecucao() {
   const [studentNotes, setStudentNotes] = useState("");
 
   if (loadingStatus || loadingTasks) {
-    return <AppLayout><div className="flex justify-center p-8 text-muted-foreground">Carregando tarefas do dia...</div></AppLayout>;
+    return <AppLayout><div className="flex justify-center p-8 text-muted-foreground">Carregando plano do dia...</div></AppLayout>;
   }
 
   if (!mentoria || mentoria.status !== 'active') {
@@ -154,11 +164,33 @@ export default function MentoriaExecucao() {
         <header>
           <div className="flex items-center justify-between mb-1">
             <Link to="/mentoria" className="text-primary text-xs font-bold uppercase hover:underline">← Visão Geral</Link>
-            <span className="text-xs text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded">{new Date().toLocaleDateString('pt-BR')}</span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Plano do Dia</h1>
+          <h1 className="text-2xl font-bold text-foreground">Plano de Ação</h1>
           <p className="text-sm text-muted-foreground">Suas tarefas escaladas pelo mentor</p>
         </header>
+
+        {/* Date Horizon Picker */}
+        <div className="flex overflow-x-auto gap-2 pb-2 no-scrollbar scroll-smooth">
+          {daysHorizon.map(date => {
+             const d = new Date(date + 'T12:00:00Z');
+             const isSelected = selectedDate === date;
+             const isToday = today === date;
+             return (
+               <button 
+                 key={date}
+                 onClick={() => setSelectedDate(date)}
+                 className={cn(
+                   "flex flex-col items-center justify-center min-w-[3.5rem] py-2 rounded-xl border transition-all shrink-0",
+                   isSelected ? "bg-primary text-primary-foreground border-primary shadow-md scale-105" : "bg-card border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
+                 )}
+               >
+                 <span className="text-[10px] font-bold uppercase mb-0.5">{d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                 <span className="text-sm font-black">{d.getDate()}</span>
+                 {isToday && <span className={cn("text-[9px] mt-0.5 font-bold", isSelected ? "text-primary-foreground/80" : "text-primary")}>HOJE</span>}
+               </button>
+             )
+          })}
+        </div>
 
         <div className="space-y-3">
           {tasks.length > 0 ? tasks.map((task: MentoriaTarefa) => {
