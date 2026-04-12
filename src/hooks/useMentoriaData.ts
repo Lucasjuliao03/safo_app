@@ -166,3 +166,47 @@ export function useAdminStudentTasks(userId: string | undefined) {
     enabled: !!userId
   });
 }
+
+export function useAdminDeleteIntervencao(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => mentoriaService.deleteIntervencao(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mentoria_interventions', userId] });
+    }
+  });
+}
+
+export function useAdminUpdateIntervencao(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: { id: string; reason: string; action_taken: string }) => 
+      mentoriaService.updateIntervencao(p.id, p.reason, p.action_taken),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mentoria_interventions', userId] });
+    }
+  });
+}
+
+export function useAdminDeleteTask(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => mentoriaService.deleteTask(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin_mentoring_tasks', userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_tasks', userId] });
+    }
+  });
+}
+
+export function useAdminUpdateTask(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: { id: string; title?: string; description?: string; planned_minutes?: number; planned_date?: string }) => 
+      mentoriaService.updateTask(p.id, p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin_mentoring_tasks', userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_tasks', userId] });
+    }
+  });
+}

@@ -214,6 +214,36 @@ export async function getStudentInterventions(userId: string) {
   return data || [];
 }
 
+export async function deleteIntervencao(id: string) {
+  const { error } = await supabase.from('mentoria_intervencoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateIntervencao(id: string, reason: string, action_taken: string) {
+  const { data, error } = await supabase
+    .from('mentoria_intervencoes')
+    .update({ reason, action_taken })
+    .eq('id', id)
+    .select();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteTask(id: string) {
+  const { error } = await supabase.from('mentoria_tarefas_diarias').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateTask(id: string, payload: { title?: string; description?: string; planned_minutes?: number; planned_date?: string }) {
+  const { data, error } = await supabase
+    .from('mentoria_tarefas_diarias')
+    .update(payload)
+    .eq('id', id)
+    .select();
+  if (error) throw error;
+  return data;
+}
+
 export async function activateMentoria(userId: string, mentorId: string) {
   const { data, error } = await supabase
     .from('mentoria_alunos')

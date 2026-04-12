@@ -8,13 +8,17 @@ import {
   useAdminRegisterIntervention,
   useStudentInterventions,
   useAdminGenerateTasks,
-  useAdminStudentTasks
+  useAdminStudentTasks,
+  useAdminDeleteIntervencao,
+  useAdminUpdateIntervencao,
+  useAdminDeleteTask,
+  useAdminUpdateTask
 } from "@/hooks/useMentoriaData";
 import { useSubjects, useTopics, useUserProfile } from "@/hooks/useStudyData";
 import { useStudentEvolution } from "@/hooks/useStudentEvolution";
 import { TaskType, MentoriaTarefa } from "@/services/mentoriaService";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play, BrainCircuit } from "lucide-react";
+import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play, BrainCircuit, Pencil, Trash2, Save, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -41,10 +45,18 @@ export default function AdminMentoriaAluno() {
   const diagMutation = useAdminUpsertDiagnostico();
   const interventionMutation = useAdminRegisterIntervention();
   const generateMutation = useAdminGenerateTasks();
+  const deleteIntervencaoMutation = useAdminDeleteIntervencao(id);
+  const updateIntervencaoMutation = useAdminUpdateIntervencao(id);
+  const deleteTaskMutation = useAdminDeleteTask(id);
+  const updateTaskMutation = useAdminUpdateTask(id);
 
   const [activeTab, setActiveTab] = useState<'diagnostico' | 'plano' | 'intervencao' | 'historico'>('plano');
   const [diagForm, setDiagForm] = useState({ objective: '', daily_available_minutes: 0, mentor_notes: '' });
   const [intervencaoForm, setIntervencaoForm] = useState({ reason: '', action_taken: '' });
+  
+  // Edit states
+  const [editingInterv, setEditingInterv] = useState<{ id: string; reason: string; action_taken: string } | null>(null);
+  const [editingTask, setEditingTask] = useState<{ id: string; title: string; description: string; planned_minutes: number; planned_date: string } | null>(null);
 
   // Generator State
   const tomorrow = new Date();
@@ -442,27 +454,45 @@ export default function AdminMentoriaAluno() {
                       </h4>
                       <div className="grid gap-2">
                          {historyTasks.filter((t: any) => t.planned_date === date).map((task: any) => (
-                           <div key={task.id} className="bg-muted/40 border border-border p-3 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm">
-                             <div>
-                                <p className="font-semibold">{task.title}</p>
-                                <p className="text-xs text-muted-foreground">{task.subjects?.name || "Matéria"} • {task.planned_minutes} minutos previstos</p>
-                             </div>
-                             <div className="flex items-center gap-3">
-                                <span className={cn(
-                                  "text-xs px-2 py-1 rounded-md font-bold uppercase",
-                                  task.status === 'completed' ? "bg-success/20 text-success" :
-                                  task.status === 'skipped' ? "bg-destructive/20 text-destructive" :
-                                  "bg-warning/20 text-warning"
-                                )}>
-                                  {task.status === 'pending' ? 'Pendente' : task.status === 'skipped' ? 'Falhou / Pulou' : 'Concluído'}
-                                </span>
-                                {task.status === 'completed' && (
-                                   <div className="text-right text-xs bg-card border border-border p-1.5 rounded-md">
-                                     <p className="font-bold text-primary">{task.actual_minutes || 0} min reais</p>
-                                     <p className="text-muted-foreground">{task.actual_questions || 0} questões</p>
+                           <div key={task.id} className="bg-muted/40 border border-border p-3 rounded-xl text-sm space-y-2">
+                             {editingTask?.id === task.id ? (
+                               <div className="space-y-2">
+                                 <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} className="w-full bg-muted border border-border rounded p-2 text-xs" placeholder="Título da tarefa" />
+                                 <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} className="w-full bg-muted border border-border rounded p-2 text-xs h-12 resize-none" placeholder="Descrição" />
+                                 <div className="flex gap-2">
+                                   <div className="flex-1">
+                                     <label className="text-[10px] text-muted-foreground">Minutos previstos</label>
+                                     <input type="number" value={editingTask.planned_minutes} onChange={e => setEditingTask({ ...editingTask, planned_minutes: parseInt(e.target.value) })} className="w-full bg-muted border border-border rounded p-1.5 text-xs" />
                                    </div>
-                                )}
-                             </div>
+                                   <div className="flex-1">
+                                     <label className="text-[10px] text-muted-foreground">Data planejada</label>
+                                     <input type="date" value={editingTask.planned_date} onChange={e => setEditingTask({ ...editingTask, planned_date: e.target.value })} className="w-full bg-muted border border-border rounded p-1.5 text-xs" />
+                                   </div>
+                                 </div>
+                                 <div className="flex gap-2">
+                                   <button onClick={() => updateTaskMutation.mutate({ id: editingTask.id, title: editingTask.title, description: editingTask.description, planned_minutes: editingTask.planned_minutes, planned_date: editingTask.planned_date }, { onSuccess: () => { toast.success('Tarefa atualizada!'); setEditingTask(null); } })} className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold"><Save className="h-3 w-3"/> Salvar</button>
+                                   <button onClick={() => setEditingTask(null)} className="flex items-center gap-1 px-3 py-1 bg-muted border border-border rounded text-xs"><X className="h-3 w-3"/> Cancelar</button>
+                                 </div>
+                               </div>
+                             ) : (
+                               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                 <div>
+                                   <p className="font-semibold">{task.title}</p>
+                                   <p className="text-xs text-muted-foreground">{task.subjects?.name || 'Matéria'} · {task.planned_minutes} min previstos</p>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                   <span className={cn("text-xs px-2 py-1 rounded-md font-bold uppercase", task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'skipped' ? 'bg-destructive/20 text-destructive' : 'bg-warning/20 text-warning')}>{task.status === 'pending' ? 'Pendente' : task.status === 'skipped' ? 'Falhou' : 'Concluído'}</span>
+                                   {task.status === 'completed' && (
+                                     <div className="text-right text-xs bg-card border border-border p-1.5 rounded-md">
+                                       <p className="font-bold text-primary">{task.actual_minutes || 0} min</p>
+                                       <p className="text-muted-foreground">{task.actual_questions || 0} q.</p>
+                                     </div>
+                                   )}
+                                   <button onClick={() => setEditingTask({ id: task.id, title: task.title, description: task.description || '', planned_minutes: task.planned_minutes || 60, planned_date: task.planned_date })} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"><Pencil className="h-3.5 w-3.5" /></button>
+                                   <button onClick={() => { if (confirm('Excluir esta tarefa?')) deleteTaskMutation.mutate(task.id, { onSuccess: () => toast.success('Tarefa excluída.') }); }} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition"><Trash2 className="h-3.5 w-3.5" /></button>
+                                 </div>
+                               </div>
+                             )}
                            </div>
                          ))}
                       </div>
@@ -502,10 +532,29 @@ export default function AdminMentoriaAluno() {
                <h2 className="font-bold flex items-center gap-2 border-b border-border pb-3"><Activity className="h-4 w-4" /> Histórico de Correções</h2>
                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                  {intervencoes && intervencoes.length > 0 ? intervencoes.map((int: any) => (
-                   <div key={int.id} className="text-sm bg-muted/40 p-3 rounded-lg border border-border/50">
-                     <p className="text-xs text-muted-foreground mb-1">{new Date(int.created_at).toLocaleString('pt-BR')}</p>
-                     <p><strong>Motivo:</strong> {int.reason}</p>
-                     <p className="text-muted-foreground mt-1"><strong>Ação:</strong> {int.action_taken}</p>
+                   <div key={int.id} className="text-sm bg-muted/40 p-3 rounded-lg border border-border/50 space-y-2">
+                     <div className="flex items-center justify-between">
+                       <p className="text-xs text-muted-foreground">{new Date(int.created_at).toLocaleString('pt-BR')}</p>
+                       <div className="flex gap-1">
+                         <button onClick={() => setEditingInterv({ id: int.id, reason: int.reason, action_taken: int.action_taken })} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"><Pencil className="h-3 w-3" /></button>
+                         <button onClick={() => { if (confirm('Excluir esta intervenção?')) deleteIntervencaoMutation.mutate(int.id, { onSuccess: () => toast.success('Excluído.') }); }} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition"><Trash2 className="h-3 w-3" /></button>
+                       </div>
+                     </div>
+                     {editingInterv?.id === int.id ? (
+                       <div className="space-y-2">
+                         <textarea value={editingInterv.reason} onChange={e => setEditingInterv({ ...editingInterv, reason: e.target.value })} className="w-full bg-muted border border-border rounded p-2 text-xs h-16 resize-none" placeholder="Motivo" />
+                         <textarea value={editingInterv.action_taken} onChange={e => setEditingInterv({ ...editingInterv, action_taken: e.target.value })} className="w-full bg-muted border border-border rounded p-2 text-xs h-16 resize-none" placeholder="Ação" />
+                         <div className="flex gap-2">
+                           <button onClick={() => updateIntervencaoMutation.mutate({ id: editingInterv.id, reason: editingInterv.reason, action_taken: editingInterv.action_taken }, { onSuccess: () => { toast.success('Atualizado!'); setEditingInterv(null); } })} className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold"><Save className="h-3 w-3"/> Salvar</button>
+                           <button onClick={() => setEditingInterv(null)} className="flex items-center gap-1 px-3 py-1 bg-muted border border-border rounded text-xs"><X className="h-3 w-3"/> Cancelar</button>
+                         </div>
+                       </div>
+                     ) : (
+                       <>
+                         <p><strong>Motivo:</strong> {int.reason}</p>
+                         <p className="text-muted-foreground"><strong>Ação:</strong> {int.action_taken}</p>
+                       </>
+                     )}
                    </div>
                  )) : <p className="text-sm text-muted-foreground">Nenhuma correção registrada para este aluno.</p>}
                </div>
