@@ -6,7 +6,8 @@ import {
   useMentoriaDiagnostico, 
   useMentoriaEstrategia,
   useStudentInterventions,
-  useMentoriaTasks
+  useMentoriaTasks,
+  useApplyMentoria
 } from "@/hooks/useMentoriaData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { 
@@ -14,6 +15,65 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+function ApplicationForm({ user }: { user: any }) {
+  const applyMutation = useApplyMentoria();
+  const [form, setForm] = useState({ objective: '', daily_min: '120', text: '' });
+
+  const handleApply = () => {
+    if (!user) return;
+    if (!form.objective || !form.daily_min) {
+       toast.error("Preencha todos os campos obrigatórios");
+       return;
+    }
+    applyMutation.mutate({
+      userId: user.id,
+      diagForm: {
+         objective: form.objective,
+         daily_available_minutes: parseInt(form.daily_min),
+         history_report: form.text
+      }
+    }, {
+      onSuccess: () => toast.success("Inscrição enviada para a central VIP!")
+    });
+  };
+
+  return (
+    <AppLayout>
+      <div className="flex flex-col items-center justify-center p-6 text-center mt-6 animate-fade-in max-w-md mx-auto">
+        <Target className="h-16 w-16 text-primary mb-4" />
+        <h2 className="text-2xl font-bold text-foreground mb-2">Seja Aluno VIP</h2>
+        <p className="text-muted-foreground text-sm mb-8">
+          A Mentoria é um acompanhamento rígido da sua execução. Diga-nos quem você é para o mentor analisar o seu perfil.
+        </p>
+
+        <div className="w-full bg-card border border-border p-5 rounded-2xl space-y-4 text-left">
+           <div>
+             <label className="text-xs font-bold text-muted-foreground mb-1 block">Qual é o seu Concurso Alvo? *</label>
+             <input type="text" value={form.objective} onChange={e => setForm({...form, objective: e.target.value})} placeholder="Ex: PRF 2026, Receita Federal..." className="w-full p-3 rounded-lg border border-border bg-muted focus:outline-primary text-sm"/>
+           </div>
+           <div>
+             <label className="text-xs font-bold text-muted-foreground mb-1 block">Minutos Líquidos Diários *</label>
+             <input type="number" value={form.daily_min} onChange={e => setForm({...form, daily_min: e.target.value})} className="w-full p-3 rounded-lg border border-border bg-muted focus:outline-primary text-sm"/>
+           </div>
+           <div>
+             <label className="text-xs font-bold text-muted-foreground mb-1 block">Qual é a sua maior dificuldade? (Opcional)</label>
+             <textarea value={form.text} onChange={e => setForm({...form, text: e.target.value})} placeholder="Sou lento em exatas e perco muito o foco..." className="w-full p-3 rounded-lg border border-border bg-muted focus:outline-primary text-sm h-24 resize-none"/>
+           </div>
+           
+           <button 
+             onClick={handleApply} 
+             disabled={applyMutation.isPending}
+             className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl mt-4 disabled:opacity-50"
+           >
+             Solicitar Análise de Perfil
+           </button>
+        </div>
+      </div>
+    </AppLayout>
+  );
+}
 
 export default function MentoriaDashboard() {
   const { user } = useAuth();
@@ -29,25 +89,30 @@ export default function MentoriaDashboard() {
     return (
       <AppLayout>
         <div className="flex h-full items-center justify-center p-8 text-muted-foreground animate-pulse">
-           Carregando seu plano de mentoria...
+           Carregando dados da mentoria...
         </div>
       </AppLayout>
     );
   }
 
-  // Se não possuir registro na tabela mentoria_alunos, bloqueia tela "Seja Aluno VIP"
-  if (!mentoria || mentoria.status !== 'active') {
+  // Application State UI
+  if (mentoria?.status === 'pending') {
     return (
       <AppLayout>
         <div className="flex flex-col items-center justify-center p-8 text-center mt-10">
-          <Target className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
-          <h2 className="text-xl font-bold text-foreground mb-2">Mentoria Fechada</h2>
+          <Clock className="h-16 w-16 text-warning mb-4 opacity-80" />
+          <h2 className="text-xl font-bold text-foreground mb-2">Análise Pendente</h2>
           <p className="text-muted-foreground text-sm max-w-sm">
-            Você não está matriculado no programa de Mentoria. Fale com o seu coordenador para liberar o seu acesso à gestão avançada de constância e planejamento.
+            Seu perfil e diagnóstico foram enviados com sucesso. O mentor fará a triagem e criará a sua estratégia base dentro de algumas horas.
           </p>
         </div>
       </AppLayout>
     );
+  }
+
+  // Not enrolled UI
+  if (!mentoria || mentoria.status !== 'active') {
+    return <ApplicationForm user={user} />;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as mentoriaService from '@/services/mentoriaService';
+import { supabase } from '@/lib/supabase';
 
 // Hooks para o Aluno
 export function useMentoriaStatus(userId: string | undefined) {
@@ -121,6 +122,24 @@ export function useAdminActivateMentoria() {
       mentoriaService.activateMentoria(props.userId, props.mentorId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin_mentoring_students'] });
+    }
+  });
+}
+
+export function useApplyMentoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (props: { userId: string, diagForm: Partial<mentoriaService.MentoriaDiagnostico> }) => {
+       // Insert pending status
+       const { error: alError } = await supabase.from('mentoria_alunos').insert({ user_id: props.userId, status: 'pending' });
+       if (alError) throw alError;
+       // Insert user initial diagnostic
+       const { error: diagError } = await supabase.from('mentoria_diagnosticos').insert({ ...props.diagForm, user_id: props.userId });
+       if (diagError) throw diagError;
+       return true;
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['mentoria_status', variables.userId] });
     }
   });
 }

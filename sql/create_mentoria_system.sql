@@ -101,15 +101,19 @@ ALTER TABLE public.mentoria_tarefas_diarias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mentoria_alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mentoria_intervencoes ENABLE ROW LEVEL SECURITY;
 
--- 1. Mentoria Alunos (Aluno se enxerga; Admin enxerga geral)
+-- 1. Mentoria Alunos (Aluno se enxerga e pode aplicar; Admin enxerga geral)
 CREATE POLICY "Aluno visualiza sua flag de mentoria" ON public.mentoria_alunos
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+CREATE POLICY "Aluno aplica para mentoria" ON public.mentoria_alunos
+    FOR INSERT WITH CHECK (auth.uid() = user_id AND status = 'pending');
 CREATE POLICY "Admins alteram controle de alunos" ON public.mentoria_alunos
     FOR ALL USING (public.is_admin_user());
 
--- 2. Diagnóstico & Estratégia (Aluno lê, Admin lê e edita)
-CREATE POLICY "Aluno lê diagnóstico e estratégia" ON public.mentoria_diagnosticos
+-- 2. Diagnóstico & Estratégia (Aluno lê e preenche form basico, Admin total)
+CREATE POLICY "Aluno lê diagnóstico" ON public.mentoria_diagnosticos
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+CREATE POLICY "Aluno preenche diagnostico" ON public.mentoria_diagnosticos
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Admins manipulam diagnóstico" ON public.mentoria_diagnosticos
     FOR ALL USING (public.is_admin_user());
 CREATE POLICY "Aluno lê estratégia" ON public.mentoria_estrategias

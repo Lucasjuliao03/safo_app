@@ -19,8 +19,8 @@ export default function AdminMentoriaDashboard() {
   const [addSearch, setAddSearch] = useState("");
 
   const filteredAlunos = alunos.filter((a: any) => 
-    a.profiles?.name?.toLowerCase().includes(search.toLowerCase()) || 
-    a.profiles?.email?.toLowerCase().includes(search.toLowerCase())
+    a.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) || 
+    a.profiles?.username?.toLowerCase().includes(search.toLowerCase())
   );
 
   // Find users not yet in mentoria
@@ -159,8 +159,8 @@ export default function AdminMentoriaDashboard() {
                   filteredAlunos.map((aluno: any) => (
                     <tr key={aluno.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-foreground">{aluno.profiles?.name || "Sem Nome"}</div>
-                        <div className="text-xs text-muted-foreground">{aluno.profiles?.email}</div>
+                        <div className="font-medium text-foreground">{aluno.profiles?.full_name || "Sem Nome"}</div>
+                        <div className="text-xs text-muted-foreground">{aluno.profiles?.username}</div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
                         {new Date(aluno.started_at).toLocaleDateString("pt-BR")}
