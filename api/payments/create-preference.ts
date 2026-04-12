@@ -13,7 +13,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MP_TOKEN    = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   const SB_URL      = process.env.SUPABASE_URL;
   const SB_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const APP_URL     = process.env.APP_URL || "";
+  // Deriva a URL base do próprio request se APP_URL não estiver configurada
+  const requestHost = `https://${req.headers.host}`;
+  const APP_URL     = (process.env.APP_URL || requestHost).replace(/\/$/, "");
+
 
   if (!MP_TOKEN)       return res.status(500).json({ error: "MERCADO_PAGO_ACCESS_TOKEN não configurado no Vercel." });
   if (!SB_URL || !SB_KEY) return res.status(500).json({ error: "Supabase não configurado no Vercel." });
@@ -92,6 +95,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
     const prefClient = new Preference(mp);
 
+    const webhookUrl = `${APP_URL}/api/payments/webhook`;
+    console.log(`[create-preference] APP_URL=${APP_URL} | webhookUrl=${webhookUrl}`);
+
+
     const pref = await prefClient.create({
       body: {
         items: [{
@@ -110,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           failure: `${APP_URL}/pagamento/falhou`,
         },
         auto_return:          "approved" as const,
-        notification_url:     `${APP_URL}/api/payments/webhook`,
+        notification_url:     webhookUrl,
         statement_descriptor: "SAFO ESTUDOS",
       },
     });
