@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Users, Layers, BookOpen, FileText, MessageSquare, Bell, LogOut, Menu, X, Shield, Copy } from "lucide-react";
+import { LayoutDashboard, Users, Layers, BookOpen, FileText, MessageSquare, Bell, LogOut, Menu, X, Shield, Copy, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/services/authService";
 
@@ -11,6 +11,7 @@ interface AdminLayoutProps {
 
 const navItems = [
   { path: "/painel", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/painel/mentoria", label: "Mentoria VIP", icon: Target },
   { path: "/painel/usuarios", label: "Usuários", icon: Users },
   { path: "/painel/estrutura", label: "Cursos & Estrutura", icon: Layers },
   { path: "/painel/questoes", label: "Questões", icon: BookOpen },

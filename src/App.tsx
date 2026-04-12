@@ -30,6 +30,12 @@ import AdminContent from "./pages/admin/AdminContent";
 import AdminMessages from "./pages/admin/AdminMessages";
 import AdminPush from "./pages/admin/AdminPush";
 import AdminPlansPage from "./pages/admin/AdminPlansPage";
+import AdminMentoriaDashboard from "./pages/admin/AdminMentoriaDashboard";
+import AdminMentoriaAluno from "./pages/admin/AdminMentoriaAluno";
+
+import MentoriaDashboard from "./pages/mentoria/MentoriaDashboard";
+import MentoriaExecucao from "./pages/mentoria/MentoriaExecucao";
+import MentoriaDesempenho from "./pages/mentoria/MentoriaDesempenho";
 
 const queryClient = new QueryClient();
 
@@ -90,6 +96,10 @@ const AppRoutes = () => {
           <Route path="/pagamento/pendente" element={<PagamentoPendente />} />
           <Route path="/pagamento/falhou" element={<PagamentoFalhou />} />
           
+          <Route path="/mentoria" element={<ProtectedRoute><MentoriaDashboard /></ProtectedRoute>} />
+          <Route path="/mentoria/execucao" element={<ProtectedRoute><MentoriaExecucao /></ProtectedRoute>} />
+          <Route path="/mentoria/relatorios" element={<ProtectedRoute><MentoriaDesempenho /></ProtectedRoute>} />
+
           <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
           
           <Route path="/painel" element={<ProtectedRoute><AdminRoute><AdminDashboard /></AdminRoute></ProtectedRoute>} />
@@ -100,6 +110,10 @@ const AppRoutes = () => {
           <Route path="/painel/mensagens" element={<ProtectedRoute><AdminRoute><AdminMessages /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/push" element={<ProtectedRoute><AdminRoute><AdminPush /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/planos" element={<ProtectedRoute><AdminRoute><AdminPlansPage /></AdminRoute></ProtectedRoute>} />
+          
+          {/* Módulo de Admin Mentoria */}
+          <Route path="/painel/mentoria" element={<ProtectedRoute><AdminRoute><AdminMentoriaDashboard /></AdminRoute></ProtectedRoute>} />
+          <Route path="/painel/mentoria/aluno/:id" element={<ProtectedRoute><AdminRoute><AdminMentoriaAluno /></AdminRoute></ProtectedRoute>} />
           
           <Route path="*" element={<NotFound />} />
         </Routes>
