@@ -17,6 +17,10 @@ import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import Achievements from "./pages/Achievements";
 import Ranking from "./pages/Ranking";
+import Assinar from "./pages/Assinar";
+import PagamentoSucesso from "./pages/pagamento/Sucesso";
+import PagamentoPendente from "./pages/pagamento/Pendente";
+import PagamentoFalhou from "./pages/pagamento/Falhou";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -78,6 +82,12 @@ const AppRoutes = () => {
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/medalhas" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
           <Route path="/ranking" element={<ProtectedRoute><Ranking /></ProtectedRoute>} />
+          <Route path="/assinar" element={<ProtectedRoute><Assinar /></ProtectedRoute>} />
+
+          {/* Páginas de retorno do Mercado Pago — sem ProtectedRoute para usuários não logados verem a mensagem */}
+          <Route path="/pagamento/sucesso" element={<PagamentoSucesso />} />
+          <Route path="/pagamento/pendente" element={<PagamentoPendente />} />
+          <Route path="/pagamento/falhou" element={<PagamentoFalhou />} />
           
           <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
           
