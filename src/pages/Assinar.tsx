@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
@@ -141,10 +141,12 @@ export default function AssinarPage() {
     staleTime: 1000 * 60 * 10,
   });
 
-  // Seleciona primeiro plano por padrão
-  if (!selectedPlanId && plans.length > 0) {
-    setSelectedPlanId(plans[0].id);
-  }
+  // Seleciona o primeiro plano por padrão quando os dados carregam
+  useEffect(() => {
+    if (!selectedPlanId && plans.length > 0) {
+      setSelectedPlanId(plans[0].id);
+    }
+  }, [plans, selectedPlanId]);
 
   const handleSubscribe = async () => {
     if (!selectedPlanId || isCheckingOut) return;
