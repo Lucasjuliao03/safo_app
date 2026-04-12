@@ -134,12 +134,13 @@ export async function getStudentAlerts(userId: string) {
 export async function getMentoringStudents() {
   const { data, error } = await supabase
     .from('mentoria_alunos')
-    .select(`*, profiles(full_name, username)`)
+    .select(`*`)
     .order('started_at', { ascending: false });
     
   if (error) {
     console.error("Error fetching students:", error);
-    throw error;
+    // Silent fail in UI but log:
+    return [];
   }
   return data || [];
 }

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS public.mentoria_tarefas_diarias (
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_mentor_tasks_user_date ON public.mentoria_tarefas_diarias(user_id, planned_date);
+CREATE INDEX IF NOT EXISTS idx_mentor_tasks_user_date ON public.mentoria_tarefas_diarias(user_id, planned_date);
 
 -- 5. Tabela: Alertas do Sistema (Background/Métricas)
 CREATE TABLE IF NOT EXISTS public.mentoria_alertas (
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.mentoria_alertas (
     created_at TIMESTAMPTZ DEFAULT now(),
     resolved_at TIMESTAMPTZ
 );
-CREATE INDEX idx_mentor_alertas_user ON public.mentoria_alertas(user_id, is_resolved);
+CREATE INDEX IF NOT EXISTS idx_mentor_alertas_user ON public.mentoria_alertas(user_id, is_resolved);
 
 -- 6. Tabela: Intervenções (Correções de Rota by Admin)
 CREATE TABLE IF NOT EXISTS public.mentoria_intervencoes (
@@ -102,41 +102,66 @@ ALTER TABLE public.mentoria_alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mentoria_intervencoes ENABLE ROW LEVEL SECURITY;
 
 -- 1. Mentoria Alunos (Aluno se enxerga e pode aplicar; Admin enxerga geral)
+DROP POLICY IF EXISTS "Aluno visualiza sua flag de mentoria" ON public.mentoria_alunos;
 CREATE POLICY "Aluno visualiza sua flag de mentoria" ON public.mentoria_alunos
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Aluno aplica para mentoria" ON public.mentoria_alunos;
 CREATE POLICY "Aluno aplica para mentoria" ON public.mentoria_alunos
     FOR INSERT WITH CHECK (auth.uid() = user_id AND status = 'pending');
+
+DROP POLICY IF EXISTS "Admins alteram controle de alunos" ON public.mentoria_alunos;
 CREATE POLICY "Admins alteram controle de alunos" ON public.mentoria_alunos
     FOR ALL USING (public.is_admin_user());
 
 -- 2. Diagnóstico & Estratégia (Aluno lê e preenche form basico, Admin total)
+DROP POLICY IF EXISTS "Aluno lê diagnóstico" ON public.mentoria_diagnosticos;
 CREATE POLICY "Aluno lê diagnóstico" ON public.mentoria_diagnosticos
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Aluno preenche diagnostico" ON public.mentoria_diagnosticos;
 CREATE POLICY "Aluno preenche diagnostico" ON public.mentoria_diagnosticos
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins manipulam diagnóstico" ON public.mentoria_diagnosticos;
 CREATE POLICY "Admins manipulam diagnóstico" ON public.mentoria_diagnosticos
     FOR ALL USING (public.is_admin_user());
+
+DROP POLICY IF EXISTS "Aluno lê estratégia" ON public.mentoria_estrategias;
 CREATE POLICY "Aluno lê estratégia" ON public.mentoria_estrategias
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Admins manipulam estratégia" ON public.mentoria_estrategias;
 CREATE POLICY "Admins manipulam estratégia" ON public.mentoria_estrategias
     FOR ALL USING (public.is_admin_user());
 
 -- 3. Tarefas Diárias (Aluno lê e faz update do seu checkin; Admin total)
+DROP POLICY IF EXISTS "Aluno opera suas tarefas" ON public.mentoria_tarefas_diarias;
 CREATE POLICY "Aluno opera suas tarefas" ON public.mentoria_tarefas_diarias
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Aluno faz checkin na tarefa" ON public.mentoria_tarefas_diarias;
 CREATE POLICY "Aluno faz checkin na tarefa" ON public.mentoria_tarefas_diarias
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins manipulam plano diário" ON public.mentoria_tarefas_diarias;
 CREATE POLICY "Admins manipulam plano diário" ON public.mentoria_tarefas_diarias
     FOR ALL USING (public.is_admin_user());
 
 -- 4. Alertas e Intervenções (Admin restrito para gravação)
+DROP POLICY IF EXISTS "Leitura de acompanhamento" ON public.mentoria_alertas;
 CREATE POLICY "Leitura de acompanhamento" ON public.mentoria_alertas
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Admin controla alertas" ON public.mentoria_alertas;
 CREATE POLICY "Admin controla alertas" ON public.mentoria_alertas
     FOR ALL USING (public.is_admin_user());
     
+DROP POLICY IF EXISTS "Aluno lê logs do mentor" ON public.mentoria_intervencoes;
 CREATE POLICY "Aluno lê logs do mentor" ON public.mentoria_intervencoes
     FOR SELECT USING (auth.uid() = user_id OR public.is_admin_user());
+
+DROP POLICY IF EXISTS "Admin adiciona intervencoes" ON public.mentoria_intervencoes;
 CREATE POLICY "Admin adiciona intervencoes" ON public.mentoria_intervencoes
     FOR ALL USING (public.is_admin_user());
 

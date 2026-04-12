@@ -18,9 +18,21 @@ export default function AdminMentoriaDashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSearch, setAddSearch] = useState("");
 
-  const filteredAlunos = alunos.filter((a: any) => 
-    a.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) || 
-    a.profiles?.username?.toLowerCase().includes(search.toLowerCase())
+  // Map local profiles instead of relying on ambiguous SQL joins
+  const alunosWithProfiles = alunos.map((a: any) => {
+    const userProfile = allUsers.find(u => u.id === a.user_id);
+    return {
+      ...a,
+      user_profile: {
+        full_name: userProfile?.name || 'Sem Nome',
+        username: userProfile?.email || ''
+      }
+    };
+  });
+
+  const filteredAlunos = alunosWithProfiles.filter((a: any) => 
+    a.user_profile?.full_name?.toLowerCase().includes(search.toLowerCase()) || 
+    a.user_profile?.username?.toLowerCase().includes(search.toLowerCase())
   );
 
   // Find users not yet in mentoria
@@ -159,8 +171,8 @@ export default function AdminMentoriaDashboard() {
                   filteredAlunos.map((aluno: any) => (
                     <tr key={aluno.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-foreground">{aluno.profiles?.full_name || "Sem Nome"}</div>
-                        <div className="text-xs text-muted-foreground">{aluno.profiles?.username}</div>
+                        <div className="font-medium text-foreground">{aluno.user_profile?.full_name || "Sem Nome"}</div>
+                        <div className="text-xs text-muted-foreground">{aluno.user_profile?.username}</div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
                         {new Date(aluno.started_at).toLocaleDateString("pt-BR")}
