@@ -113,3 +113,14 @@ export function useAdminRegisterIntervention() {
     }
   });
 }
+
+export function useAdminActivateMentoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (props: { userId: string, mentorId: string }) => 
+      mentoriaService.activateMentoria(props.userId, props.mentorId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin_mentoring_students'] });
+    }
+  });
+}

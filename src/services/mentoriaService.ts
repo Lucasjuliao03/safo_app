@@ -196,3 +196,17 @@ export async function getStudentInterventions(userId: string) {
   if (error) throw error;
   return data || [];
 }
+
+export async function activateMentoria(userId: string, mentorId: string) {
+  const { data, error } = await supabase
+    .from('mentoria_alunos')
+    .upsert({ user_id: userId, mentor_id: mentorId, status: 'active' }, { onConflict: 'user_id' })
+    .select();
+    
+  if (error) throw error;
+  
+  await supabase.from('mentoria_diagnosticos').upsert({ user_id: userId }, { onConflict: 'user_id' });
+  await supabase.from('mentoria_estrategias').upsert({ user_id: userId }, { onConflict: 'user_id' });
+  
+  return data;
+}

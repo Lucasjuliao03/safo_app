@@ -8,6 +8,7 @@ const navItems = [
   { path: "/flashcards", label: "Cards", icon: Layers },
   { path: "/mentoria", label: "Mentoria", icon: Target },
   { path: "/resumos", label: "Resumos", icon: FileText },
+  { path: "/ranking", label: "Ranking", icon: Trophy },
   { path: "/perfil", label: "Perfil", icon: User },
 ];
 
@@ -17,8 +18,8 @@ export function BottomNav() {
   if (pathname === "/login") return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-lg safe-bottom">
-      <div className="mx-auto flex max-w-lg items-center justify-around px-2 py-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-lg safe-bottom flex justify-center pb-2 pt-1 lg:hidden">
+      <div className="w-full flex items-center justify-around px-1 max-w-lg">
         {navItems.map((item) => {
           const active = pathname === item.path;
           return (
@@ -26,7 +27,7 @@ export function BottomNav() {
               key={item.path}
               to={item.path}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-medium transition-all",
+                "flex flex-col items-center gap-0.5 rounded-xl px-1 sm:px-2 py-1 transition-all",
                 active
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -39,7 +40,7 @@ export function BottomNav() {
                 )}
                 strokeWidth={active ? 2.5 : 2}
               />
-              <span>{item.label}</span>
+              <span className="text-[10px] sm:text-xs font-semibold">{item.label}</span>
               {active && (
                 <span className="mt-0.5 h-1 w-1 rounded-full bg-primary" />
               )}
