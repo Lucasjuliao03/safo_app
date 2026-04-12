@@ -23,28 +23,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { topic, id, type, data } = (req.body as any) || {};
+    const body = (req.body as any) || {};
+    const { topic, id, type, data, action } = body;
     const notificationType = topic || type;
     const resourceId       = id || data?.id;
 
-    console.log("[webhook]", JSON.stringify({ notificationType, resourceId }));
+    // Log completo para diagnóstico
+    console.log("[webhook] body:", JSON.stringify(body));
+    console.log("[webhook]", JSON.stringify({ notificationType, resourceId, action }));
 
     if (notificationType !== "payment" || !resourceId) {
-      return res.status(200).json({ ok: true, skipped: true });
+      return res.status(200).json({ ok: true, skipped: notificationType });
     }
 
-    const paymentId = String(resourceId);
+    // ID como number — SDK do MP exige number, não string
+    const paymentId = Number(resourceId);
+    if (isNaN(paymentId) || paymentId <= 0) {
+      console.warn("[webhook] ID de pagamento inválido:", resourceId);
+      return res.status(200).json({ ok: true });
+    }
 
     const mp = new MercadoPagoConfig({ accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN! });
     const paymentClient = new Payment(mp);
+
+    // Aguarda 1s antes de consultar — MP às vezes notifica antes do pagamento estar indexado
+    await new Promise(r => setTimeout(r, 1000));
 
     let mpPayment: any;
     try {
       mpPayment = await paymentClient.get({ id: paymentId });
     } catch (e: any) {
-      console.error("[webhook] Erro ao buscar pagamento MP:", e?.message);
+      console.error("[webhook] Erro ao buscar pagamento MP:", e?.message, "| paymentId:", paymentId);
       return res.status(200).json({ ok: true });
     }
+
 
     const externalRef = mpPayment.external_reference; // = order.id (UUID)
     const mpStatus    = mpPayment.status || "unknown";
