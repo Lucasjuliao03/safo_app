@@ -10,10 +10,11 @@ import {
   useAdminGenerateTasks,
   useAdminStudentTasks
 } from "@/hooks/useMentoriaData";
-import { useSubjects } from "@/hooks/useStudyData";
+import { useSubjects, useTopics, useUserProfile } from "@/hooks/useStudyData";
+import { useStudentEvolution } from "@/hooks/useStudentEvolution";
 import { TaskType, MentoriaTarefa } from "@/services/mentoriaService";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play } from "lucide-react";
+import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -21,11 +22,21 @@ export default function AdminMentoriaAluno() {
   const { id } = useParams<{ id: string }>();
   const { user: admin } = useAuth();
   
+  // 1. Obter Profile do Aluno
+  const { data: profile } = useUserProfile(id);
+  const courseId = profile?.course_id ? String(profile.course_id) : undefined;
+
+  // 5. Invocar Evolução do Estudante
+  const { data: evolution, isLoading: loadingEvolution } = useStudentEvolution(id, courseId || null);
+
   const { data: diagnostico, isLoading: loadingDiag } = useMentoriaDiagnostico(id);
   const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(id);
   const { data: intervencoes } = useStudentInterventions(id);
-  const { data: subjects = [] } = useSubjects();
   const { data: historyTasks = [] } = useAdminStudentTasks(id);
+  
+  // 2. Filtrar subjects e topics por courseId
+  const { data: subjects = [] } = useSubjects(courseId);
+  const { data: topics = [] } = useTopics(courseId);
   
   const diagMutation = useAdminUpsertDiagnostico();
   const interventionMutation = useAdminRegisterIntervention();
@@ -43,12 +54,17 @@ export default function AdminMentoriaAluno() {
     days: 7,
     blockMinutes: 60,
     subjectIds: [] as string[],
-    topicsText: "", // Temas / Assuntos
+    topicIds: [] as string[],
+    topicsText: "", // Fallback
+    smartMode: false,
     types: ['theory', 'questions', 'review'] as TaskType[]
   });
 
   const toggleSubject = (sid: string) => setGenForm(s => ({
     ...s, subjectIds: s.subjectIds.includes(sid) ? s.subjectIds.filter(id => id !== sid) : [...s.subjectIds, sid]
+  }));
+  const toggleTopic = (tid: string) => setGenForm(s => ({
+    ...s, topicIds: s.topicIds.includes(tid) ? s.topicIds.filter(id => id !== tid) : [...s.topicIds, tid]
   }));
   const toggleType = (tt: TaskType) => setGenForm(s => ({
     ...s, types: s.types.includes(tt) ? s.types.filter(t => t !== tt) : [...s.types, tt]
@@ -106,13 +122,64 @@ export default function AdminMentoriaAluno() {
     const dailyMin = diagnostico?.daily_available_minutes || 120;
     const blocksPerDay = Math.floor(dailyMin / genForm.blockMinutes) || 1;
     
-    // Process topics
+    // Process selected topics
     const customTopics = genForm.topicsText.split(',').map(t => t.trim()).filter(t => t.length > 0);
     
+    // Build Schedule Array based on Smart Mode
+    let scheduleBlueprint: { sid: string, tid: string | null }[] = [];
+    
+    if (genForm.smartMode && evolution && evolution.subjectProgress) {
+        // Build weighted array based on performance deficit
+        genForm.subjectIds.forEach(sid => {
+           const prog = evolution.subjectProgress.find(p => p.id === sid);
+           let weight = 1; // Default
+           if (prog) {
+              if (prog.questionsPercent < 15) weight = 3;       // Very weak or unstudied
+              else if (prog.questionsPercent < 45) weight = 2; // Weak
+              else weight = 1;                                 // Good
+           } else {
+              weight = 3; // No data = prioritize studying
+           }
+           
+           // Fetch selected topic IDs for this subject
+           const subTopicsSelected = genForm.topicIds.filter(tid => {
+              const t = topics.find((tt: any) => tt.id.toString() === tid);
+              return t && t.subject_id.toString() === sid.toString();
+           });
+
+           for (let i = 0; i < weight; i++) {
+              if (subTopicsSelected.length > 0) {
+                 scheduleBlueprint.push({ sid, tid: subTopicsSelected[i % subTopicsSelected.length] });
+              } else {
+                 scheduleBlueprint.push({ sid, tid: null });
+              }
+           }
+        });
+        
+        // Sort specifically: weaker subjects are pushed to front if we wanted. 
+        // But weight makes them appear more times in the robin loop.
+    } else {
+        // Sequential Mode
+        genForm.subjectIds.forEach(sid => {
+           const subTopicsSelected = genForm.topicIds.filter(tid => {
+              const t = topics.find((tt: any) => tt.id.toString() === tid);
+              return t && t.subject_id.toString() === sid.toString();
+           });
+
+           if (subTopicsSelected.length > 0) {
+              subTopicsSelected.forEach(tid => {
+                 scheduleBlueprint.push({ sid, tid });
+              });
+           } else {
+              scheduleBlueprint.push({ sid, tid: null });
+           }
+        });
+    }
+
     let tasks: Omit<MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[] = [];
-    let subjectIndex = 0;
+    let blueprintIndex = 0;
     let typeIndex = 0;
-    let topicIndex = 0;
+    let customTopicIndex = 0;
 
     for (let dayOffset = 0; dayOffset < genForm.days; dayOffset++) {
       const d = new Date(genForm.startDate + 'T12:00:00Z');
@@ -120,11 +187,20 @@ export default function AdminMentoriaAluno() {
       const plannedDate = d.toISOString().split('T')[0];
 
       for (let block = 0; block < blocksPerDay; block++) {
-         const sid = genForm.subjectIds[subjectIndex % genForm.subjectIds.length];
+         const bp = scheduleBlueprint[blueprintIndex % scheduleBlueprint.length];
+         const sid = bp.sid;
          const tt = genForm.types[typeIndex % genForm.types.length];
+         
          const subjectName = subjects.find((s: any) => s.id === sid)?.name || "Matéria";
          
-         const currentTopic = customTopics.length > 0 ? customTopics[topicIndex % customTopics.length] : "";
+         let currentTopic = "";
+         if (bp.tid) {
+            currentTopic = topics.find((t: any) => t.id.toString() === bp.tid)?.name || "";
+         } else if (customTopics.length > 0) {
+            currentTopic = customTopics[customTopicIndex % customTopics.length];
+            customTopicIndex++;
+         }
+         
          const baseName = currentTopic ? `${subjectName} - ${currentTopic}` : subjectName;
 
          let title = "";
@@ -139,8 +215,11 @@ export default function AdminMentoriaAluno() {
            planned_date: plannedDate,
            task_type: tt,
            subject_id: sid,
+           topic_id: bp.tid ? parseInt(bp.tid) : null,
            title,
-           description: "Estudo gerado automaticamente pelo mentor baseando-se no seu edital principal e deficiências mapeadas.",
+           description: genForm.smartMode 
+             ? "Estudo gerado com MOTOR INTELIGENTE priorizando seus maiores déficits diagnosticados na plataforma." 
+             : "Estudo gerado automaticamente pelo mentor baseando-se no seu edital principal.",
            planned_minutes: genForm.blockMinutes,
            status: 'pending',
            actual_minutes: null,
@@ -148,10 +227,9 @@ export default function AdminMentoriaAluno() {
            student_notes: null
          } as any);
 
-         subjectIndex++;
-         if (subjectIndex % genForm.subjectIds.length === 0) {
-            typeIndex++; // Cycle types after all subjects
-            topicIndex++; // Cycle topics after all subjects along with types
+         blueprintIndex++;
+         if (blueprintIndex % scheduleBlueprint.length === 0) {
+            typeIndex++; 
          }
       }
     }
@@ -260,26 +338,55 @@ export default function AdminMentoriaAluno() {
 
                <div className="space-y-4 md:col-span-2">
                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground mb-2 block">Matérias do Ciclo</label>
-                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 bg-muted/30 p-2 rounded-lg border border-border">
-                      {subjects.map((sub: any) => (
-                        <label key={sub.id} className="flex items-center gap-2 text-xs hover:bg-muted p-1 rounded cursor-pointer">
-                          <input type="checkbox" checked={genForm.subjectIds.includes(sub.id)} onChange={() => toggleSubject(sub.id)} className="rounded border-border text-primary focus:ring-primary h-3 w-3" />
-                          <span className="truncate">{sub.name}</span>
-                        </label>
-                      ))}
+                    <div className="flex items-center justify-between mb-2">
+                       <label className="text-xs font-semibold text-muted-foreground block">Matérias e Temas do Ciclo</label>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto pr-2 bg-muted/30 p-3 rounded-lg border border-border space-y-3">
+                      {subjects.map((sub: any) => {
+                        const subTopics = topics.filter((t: any) => t.subject_id === sub.id);
+                        const isSubChecked = genForm.subjectIds.includes(sub.id);
+                        
+                        return (
+                          <div key={sub.id} className="space-y-1">
+                            <label className="flex items-center gap-2 text-sm font-bold hover:bg-muted p-1 rounded cursor-pointer">
+                              <input type="checkbox" checked={isSubChecked} onChange={() => toggleSubject(sub.id)} className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5" />
+                              <span className="truncate">{sub.name}</span>
+                            </label>
+                            
+                            {isSubChecked && subTopics.length > 0 && (
+                               <div className="pl-6 space-y-1 mt-1 border-l-2 border-primary/20 ml-2">
+                                 {subTopics.map((topic: any) => (
+                                    <label key={topic.id} className="flex items-center gap-2 text-xs hover:bg-muted p-1 rounded cursor-pointer text-muted-foreground">
+                                      <input type="checkbox" checked={genForm.topicIds.includes(topic.id.toString())} onChange={() => toggleTopic(topic.id.toString())} className="rounded border-border text-primary/70 focus:ring-primary h-3 w-3" />
+                                      <span className="truncate">{topic.name}</span>
+                                    </label>
+                                 ))}
+                               </div>
+                            )}
+                            {isSubChecked && subTopics.length === 0 && (
+                               <div className="pl-6 mt-1 ml-2 text-[10px] text-muted-foreground italic">
+                                 Nenhum tema listado no banco. O plano usará apenas o nome da matéria.
+                               </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                  </div>
 
-                 <div>
-                    <label className="text-xs font-semibold text-muted-foreground mb-2 block">Temas / Assuntos (Opcional)</label>
-                    <textarea 
-                      value={genForm.topicsText}
-                      onChange={(e) => setGenForm({...genForm, topicsText: e.target.value})}
-                      placeholder="Ex: MTP 01, Inquérito Policial, Crase..." 
-                      className="w-full bg-muted border border-border rounded-lg p-2 text-sm focus:outline-primary/50 h-16 resize-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-1">Separe por vírgulas. A Engine irá ciclar os temas pelas missões.</p>
+                 <div className="pt-2">
+                    <label className="flex items-start gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl cursor-pointer hover:bg-primary/10 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={genForm.smartMode} 
+                        onChange={(e) => setGenForm({...genForm, smartMode: e.target.checked})} 
+                        className="mt-0.5 rounded border-primary text-primary focus:ring-primary h-4 w-4" 
+                      />
+                      <div>
+                        <span className="text-sm font-bold text-foreground flex items-center gap-1.5"><BrainCircuit className="h-4 w-4 text-primary"/> Agendamento Inteligente (Déficit)</span>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Altera a distribuição linear. Avalia o `StudentEvolution` para descobrir a % de rendimento das matérias selecionadas. Joga pro topo e repete mais vezes as Matérias com pior rendimento / não estudadas.</p>
+                      </div>
+                    </label>
                  </div>
 
                  <div>
