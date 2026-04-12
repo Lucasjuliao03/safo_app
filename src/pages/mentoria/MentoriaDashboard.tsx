@@ -11,7 +11,7 @@ import {
 } from "@/hooks/useMentoriaData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { 
-  Target, TrendingUp, AlertCircle, Clock, BookOpen, User, ArrowRight
+  Target, TrendingUp, AlertCircle, Clock, BookOpen, User, ArrowRight, Calendar
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -100,6 +100,12 @@ export default function MentoriaDashboard() {
   const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(user?.id);
   const { data: intervencoes } = useStudentInterventions(user?.id);
 
+  // Month Calendar data
+  const dateStr = new Date();
+  const startOfMonth = new Date(dateStr.getFullYear(), dateStr.getMonth(), 1).toISOString().split('T')[0];
+  const endOfMonth = new Date(dateStr.getFullYear(), dateStr.getMonth() + 1, 0).toISOString().split('T')[0];
+  const { data: monthTasks = [] } = useMentoriaTasks(user?.id, startOfMonth, endOfMonth);
+
   // Is loading?
   if (loadingStatus || loadingDiag || loadingEst) {
     return (
@@ -165,6 +171,75 @@ export default function MentoriaDashboard() {
              </div>
           </Link>
         </div>
+
+        {/* Calendar Heatmap (Visão Mensal) */}
+        <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              <h2 className="font-bold text-sm">Calendário de Execução</h2>
+            </div>
+            <span className="text-xs font-bold text-muted-foreground uppercase">{dateStr.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, i) => (
+              <div key={i} className="text-[10px] font-bold text-muted-foreground mb-1">{dia}</div>
+            ))}
+            
+            {(() => {
+              const daysInMonth = new Date(dateStr.getFullYear(), dateStr.getMonth() + 1, 0).getDate();
+              const firstDayIndex = new Date(dateStr.getFullYear(), dateStr.getMonth(), 1).getDay();
+              
+              const blanks = Array.from({ length: firstDayIndex }).map((_, i) => (
+                <div key={`blank-${i}`} className="p-2" />
+              ));
+              
+              const days = Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayDate = i + 1;
+                const dateKey = `${dateStr.getFullYear()}-${String(dateStr.getMonth() + 1).padStart(2, '0')}-${String(dayDate).padStart(2, '0')}`;
+                
+                const tasksForDay = monthTasks.filter((t: any) => t.planned_date === dateKey);
+                
+                let bgColor = "bg-muted text-muted-foreground opacity-30"; // No tasks
+                
+                if (tasksForDay.length > 0) {
+                  const completed = tasksForDay.filter((t: any) => t.status === 'completed').length;
+                  const delayed = tasksForDay.filter((t: any) => t.status === 'delayed' || t.status === 'skipped').length;
+                  
+                  const isPast = new Date(dateKey + 'T12:00:00Z') < new Date(new Date().setHours(0,0,0,0));
+                  
+                  if (completed === tasksForDay.length) {
+                    bgColor = "bg-success text-success-foreground font-bold shadow-sm"; // Verde
+                  } else if (delayed > 0 || (isPast && completed < tasksForDay.length)) {
+                    bgColor = "bg-destructive text-destructive-foreground font-bold shadow-sm"; // Vermelho
+                  } else {
+                    bgColor = "bg-warning text-warning-foreground font-bold shadow-sm"; // Laranja (Pendente)
+                  }
+                } else {
+                   // Mark today
+                   if (dateKey === new Date().toISOString().split('T')[0]) {
+                     bgColor = "bg-primary/20 text-primary border border-primary/50 font-bold";
+                   }
+                }
+                
+                return (
+                  <div key={dayDate} className={cn("aspect-square flex items-center justify-center rounded-lg text-xs transition-all", bgColor)}>
+                    {dayDate}
+                  </div>
+                );
+              });
+              
+              return [...blanks, ...days];
+            })()}
+          </div>
+          
+          <div className="flex items-center justify-center gap-4 pt-2 border-t border-border mt-3">
+             <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-success"></div><span className="text-[10px] text-muted-foreground">Feito</span></div>
+             <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-warning"></div><span className="text-[10px] text-muted-foreground">Pendente</span></div>
+             <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-destructive"></div><span className="text-[10px] text-muted-foreground">Falhou</span></div>
+          </div>
+        </section>
 
         {/* Diagnóstico Base */}
         <section className="bg-card border border-border rounded-3xl p-5 space-y-4">

@@ -201,7 +201,7 @@ export default function AdminMentoriaAluno() {
             customTopicIndex++;
          }
          
-         const baseName = currentTopic ? `${subjectName} - ${currentTopic}` : subjectName;
+         const baseName = currentTopic ? currentTopic : subjectName;
 
          let title = "";
          if (tt === 'theory') title = `Teoria: ${baseName}`;
