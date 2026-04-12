@@ -6,10 +6,13 @@ import {
   useMentoriaEstrategia, 
   useAdminUpsertDiagnostico,
   useAdminRegisterIntervention,
-  useStudentInterventions
+  useStudentInterventions,
+  useAdminGenerateTasks
 } from "@/hooks/useMentoriaData";
+import { useSubjects } from "@/hooks/useStudyData";
+import { TaskType, MentoriaTarefa } from "@/services/mentoriaService";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle } from "lucide-react";
+import { ChevronLeft, Target, Settings, Activity, PenTool, CheckCircle, Calendar, Play } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminMentoriaAluno() {
@@ -19,13 +22,33 @@ export default function AdminMentoriaAluno() {
   const { data: diagnostico, isLoading: loadingDiag } = useMentoriaDiagnostico(id);
   const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(id);
   const { data: intervencoes } = useStudentInterventions(id);
+  const { data: subjects = [] } = useSubjects();
   
   const diagMutation = useAdminUpsertDiagnostico();
   const interventionMutation = useAdminRegisterIntervention();
+  const generateMutation = useAdminGenerateTasks();
 
-  const [activeTab, setActiveTab] = useState<'diagnostico' | 'plano' | 'intervencao'>('diagnostico');
+  const [activeTab, setActiveTab] = useState<'diagnostico' | 'plano' | 'intervencao'>('plano');
   const [diagForm, setDiagForm] = useState({ objective: '', daily_available_minutes: 0, mentor_notes: '' });
   const [intervencaoForm, setIntervencaoForm] = useState({ reason: '', action_taken: '' });
+
+  // Generator State
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [genForm, setGenForm] = useState({
+    startDate: tomorrow.toISOString().split('T')[0],
+    days: 7,
+    blockMinutes: 60,
+    subjectIds: [] as string[],
+    types: ['theory', 'questions', 'review'] as TaskType[]
+  });
+
+  const toggleSubject = (sid: string) => setGenForm(s => ({
+    ...s, subjectIds: s.subjectIds.includes(sid) ? s.subjectIds.filter(id => id !== sid) : [...s.subjectIds, sid]
+  }));
+  const toggleType = (tt: TaskType) => setGenForm(s => ({
+    ...s, types: s.types.includes(tt) ? s.types.filter(t => t !== tt) : [...s.types, tt]
+  }));
 
   // Simplified form copy trigger
   const handleLoadDiagForm = () => {
@@ -63,6 +86,62 @@ export default function AdminMentoriaAluno() {
        onSuccess: () => {
          toast.success("Intervenção registrada com sucesso!");
          setIntervencaoForm({ reason: '', action_taken: '' });
+       }
+    });
+  };
+
+  const handleGenerate = () => {
+    if (!id) return;
+    if (genForm.subjectIds.length === 0) return toast.error("Selecione pelo menos uma matéria.");
+    if (genForm.types.length === 0) return toast.error("Selecione os tipos de estudo.");
+
+    const dailyMin = diagnostico?.daily_available_minutes || 120;
+    const blocksPerDay = Math.floor(dailyMin / genForm.blockMinutes) || 1;
+    
+    let tasks: Omit<MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[] = [];
+    let subjectIndex = 0;
+    let typeIndex = 0;
+
+    for (let dayOffset = 0; dayOffset < genForm.days; dayOffset++) {
+      const d = new Date(genForm.startDate + 'T12:00:00Z');
+      d.setDate(d.getDate() + dayOffset);
+      const plannedDate = d.toISOString().split('T')[0];
+
+      for (let block = 0; block < blocksPerDay; block++) {
+         const sid = genForm.subjectIds[subjectIndex % genForm.subjectIds.length];
+         const tt = genForm.types[typeIndex % genForm.types.length];
+         const subjectName = subjects.find((s: any) => s.id === sid)?.name || "Matéria";
+
+         let title = "";
+         if (tt === 'theory') title = `Teoria: ${subjectName}`;
+         else if (tt === 'questions') title = `Minibateria de Questões: ${subjectName}`;
+         else if (tt === 'review') title = `Revisão Ativa: ${subjectName}`;
+         else if (tt === 'reading') title = `Cartões / Leitura: ${subjectName}`;
+         else title = `Estudar ${subjectName}`;
+
+         tasks.push({
+           user_id: id,
+           planned_date: plannedDate,
+           task_type: tt,
+           subject_id: sid,
+           title,
+           description: "Estudo gerado automaticamente pelo mentor baseando-se no seu edital principal e deficiências mapeadas.",
+           planned_minutes: genForm.blockMinutes,
+           status: 'pending',
+           actual_minutes: null,
+           actual_questions: null,
+           student_notes: null
+         } as any);
+
+         subjectIndex++;
+         if (subjectIndex % genForm.subjectIds.length === 0) typeIndex++; // Cycle types after all subjects
+      }
+    }
+
+    generateMutation.mutate(tasks, {
+       onSuccess: () => {
+         toast.success(`Foram agendadas ${tasks.length} missões diárias com sucesso!`);
+         setGenForm(prev => ({...prev, subjectIds: []})); // Reset to require re-interaction
        }
     });
   };
@@ -129,10 +208,74 @@ export default function AdminMentoriaAluno() {
         )}
 
         {activeTab === 'plano' && (
-          <div className="bg-card border border-border border-dashed p-10 rounded-2xl text-center space-y-3">
-             <Settings className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
-             <h3 className="font-bold">Gerador de Ciclo Semanal</h3>
-             <p className="text-sm text-muted-foreground max-w-sm mx-auto">Em breve: um gerador de tarefas em lote onde você seleciona "Seg a Sex: 2 matérias por dia" e ele distribui automaticamente as missões no banco de dados do estudante.</p>
+          <div className="bg-card border border-border p-6 rounded-2xl space-y-6">
+             <div className="flex items-center gap-2 border-b border-border pb-3">
+                <Calendar className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-lg">Gerador Automático de Ciclo</h3>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <div className="space-y-4 md:col-span-1">
+                 <div>
+                   <label className="text-xs font-semibold text-muted-foreground">Início do Ciclo</label>
+                   <input type="date" value={genForm.startDate} onChange={e => setGenForm({...genForm, startDate: e.target.value})} className="w-full bg-muted border border-border rounded-lg p-2 mt-1 text-sm focus:outline-primary/50" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-semibold text-muted-foreground">Duração (Dias)</label>
+                   <input type="number" min="1" max="30" value={genForm.days} onChange={e => setGenForm({...genForm, days: parseInt(e.target.value)})} className="w-full bg-muted border border-border rounded-lg p-2 mt-1 text-sm focus:outline-primary/50" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-semibold text-muted-foreground">Tempo p/ Matéria (Minutos)</label>
+                   <input type="number" step="15" value={genForm.blockMinutes} onChange={e => setGenForm({...genForm, blockMinutes: parseInt(e.target.value)})} className="w-full bg-muted border border-border rounded-lg p-2 mt-1 text-sm focus:outline-primary/50" />
+                   <p className="text-[10px] text-muted-foreground mt-1">Tempo líquido diário: {diagnostico?.daily_available_minutes || 120} min (Renderiza ~{Math.floor((diagnostico?.daily_available_minutes || 120) / genForm.blockMinutes)} tarefas/dia)</p>
+                 </div>
+               </div>
+
+               <div className="space-y-4 md:col-span-2">
+                 <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-2 block">Matérias do Ciclo</label>
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 bg-muted/30 p-2 rounded-lg border border-border">
+                      {subjects.map((sub: any) => (
+                        <label key={sub.id} className="flex items-center gap-2 text-xs hover:bg-muted p-1 rounded cursor-pointer">
+                          <input type="checkbox" checked={genForm.subjectIds.includes(sub.id)} onChange={() => toggleSubject(sub.id)} className="rounded border-border text-primary focus:ring-primary h-3 w-3" />
+                          <span className="truncate">{sub.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                 </div>
+
+                 <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-2 block">Tipos de Estudo</label>
+                    <div className="flex flex-wrap gap-2">
+                      {[ 
+                        { id: 'theory', label: 'Teoria' }, 
+                        { id: 'questions', label: 'Questões' }, 
+                        { id: 'review', label: 'Revisão' }, 
+                        { id: 'reading', label: 'Leitura Dirigida' } 
+                      ].map(tt => (
+                        <button 
+                          key={tt.id} 
+                          onClick={() => toggleType(tt.id as TaskType)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${genForm.types.includes(tt.id as TaskType) ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/50'}`}
+                        >
+                          {tt.label}
+                        </button>
+                      ))}
+                    </div>
+                 </div>
+               </div>
+             </div>
+
+             <div className="pt-4 border-t border-border flex justify-end">
+               <button 
+                 onClick={handleGenerate} 
+                 disabled={generateMutation.isPending}
+                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+               >
+                 <Play className="h-4 w-4" fill="currentColor" />
+                 Gerar Plano e Agendar Lote
+               </button>
+             </div>
           </div>
         )}
 

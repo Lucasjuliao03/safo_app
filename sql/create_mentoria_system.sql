@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.mentoria_alunos (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     mentor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- Admin responsável
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'finished')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'finished', 'pending')),
     started_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(user_id)

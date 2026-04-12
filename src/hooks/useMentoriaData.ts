@@ -143,3 +143,18 @@ export function useApplyMentoria() {
     }
   });
 }
+
+export function useAdminGenerateTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tasks: Omit<mentoriaService.MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[]) => {
+      return mentoriaService.adminSaveTasks(tasks);
+    },
+    onSuccess: (_, variables) => {
+      // The array of tasks should all belong to the same user
+      if (variables.length > 0) {
+        qc.invalidateQueries({ queryKey: ['mentoria_tasks', variables[0].user_id] });
+      }
+    }
+  });
+}

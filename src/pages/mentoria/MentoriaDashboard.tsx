@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
@@ -15,11 +15,27 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useCourses } from "@/hooks/useStudyData";
 import { toast } from "sonner";
 
 function ApplicationForm({ user }: { user: any }) {
   const applyMutation = useApplyMentoria();
-  const [form, setForm] = useState({ objective: '', daily_min: '120', text: '' });
+  const { data: courses = [] } = useCourses();
+  
+  const currentCourse = courses.find((c: any) => c.id === user?.courseId);
+  
+  const [form, setForm] = useState({ 
+    objective: '', 
+    daily_min: '120', 
+    text: '' 
+  });
+
+  // Pre-fill when courses load
+  useEffect(() => {
+    if (currentCourse && !form.objective) {
+      setForm(f => ({ ...f, objective: currentCourse.name }));
+    }
+  }, [currentCourse]);
 
   const handleApply = () => {
     if (!user) return;
