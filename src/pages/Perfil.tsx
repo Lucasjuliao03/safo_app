@@ -15,12 +15,14 @@ import { getAvatarUrl } from "@/hooks/useAvatar";
 import { formatDisplayName } from "@/hooks/useNickname";
 import { useUserProfile } from "@/hooks/useStudyData";
 import { useState } from "react";
-
+import { useAccessStatus } from "@/hooks/useAccessStatus";
+import { Copy, Check, Clock } from "lucide-react";
 export default function PerfilPage() {
   const { user, isAdmin, logout } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const accessStatus = useAccessStatus();
 
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: questions = [], isLoading: loadingQ } = useQuestions(isAdmin ? undefined : courseId);
@@ -89,6 +91,10 @@ export default function PerfilPage() {
     ? ((stats.xp - currentRank.xpRequired) / (nextRank.xpRequired - currentRank.xpRequired)) * 100
     : 100;
 
+  const daysLeft = accessStatus.accessExpiresAt
+    ? Math.max(0, Math.ceil((new Date(accessStatus.accessExpiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+
   if (loadingSub || loadingQ) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando perfil...</div></AppLayout>;
   }
@@ -151,6 +157,51 @@ export default function PerfilPage() {
             <span className="text-sm font-semibold text-primary">Painel Admin</span>
             <ChevronRight className="h-4 w-4 text-primary" />
           </Link>
+        )}
+
+        {/* Subscription Status Card */}
+        {(!isAdmin && !accessStatus.isLoading) && (
+          <div className="rounded-2xl border p-4 space-y-3 bg-card border-border">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  Status da Assinatura
+                </h3>
+                {accessStatus.isPaid ? (
+                  <p className="text-sm text-success font-medium flex items-center gap-1 mt-1">
+                    <Check className="w-3.5 h-3.5" /> Assinante Pro
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {accessStatus.isOnTrial ? (
+                      `Plano Gratuito (${accessStatus.trialRemaining} usos hoje)`
+                    ) : (
+                      "Acesso Expirado"
+                    )}
+                  </p>
+                )}
+              </div>
+              <Link 
+                to="/assinar"
+                className="bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              >
+                {accessStatus.isPaid ? "Renovar" : "Assinar agora"}
+              </Link>
+            </div>
+            {accessStatus.isPaid && daysLeft !== null && (
+              <div>
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                   <span>Tempo restante</span>
+                   <span>{daysLeft} dias</span>
+                </div>
+                <Progress 
+                   value={Math.min(100, (daysLeft / 30) * 100)} 
+                   className="h-1.5" 
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {/* Rank card */}
