@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
+import { MercadoPagoConfig } from "mercadopago";
 
 const STATUS_MAP: Record<string, string> = {
   approved:     "approved",
@@ -43,17 +43,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true });
     }
 
-    const mp = new MercadoPagoConfig({ accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN! });
-    const paymentClient = new Payment(mp);
+    const MP_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN!;
+    const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
 
-    // Aguarda 1s antes de consultar — MP às vezes notifica antes do pagamento estar indexado
-    await new Promise(r => setTimeout(r, 1000));
+    // Busca pagamento direto via REST (mais confiável que o SDK em sandbox)
+    let mpPayment: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      // Aguarda antes de consultar: MP às vezes notifica antes do pagamento estar indexado
+      await new Promise(r => setTimeout(r, attempt * 1500));
 
-    let mpPayment: any;
-    try {
-      mpPayment = await paymentClient.get({ id: paymentId });
-    } catch (e: any) {
-      console.error("[webhook] Erro ao buscar pagamento MP:", e?.message, "| paymentId:", paymentId);
+      const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: {
+          "Authorization": `Bearer ${MP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const mpData = await mpRes.json();
+      console.log(`[webhook] MP API attempt ${attempt} status=${mpRes.status}:`, JSON.stringify(mpData).slice(0, 300));
+
+      if (mpRes.ok && mpData?.id) {
+        mpPayment = mpData;
+        break;
+      }
+
+      console.warn(`[webhook] Tentativa ${attempt}/3 falhou. status=${mpRes.status} error=${mpData?.message}`);
+    }
+
+    if (!mpPayment) {
+      console.error("[webhook] Não foi possível buscar pagamento após 3 tentativas. paymentId:", paymentId);
       return res.status(200).json({ ok: true });
     }
 
