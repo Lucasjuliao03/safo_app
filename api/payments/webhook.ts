@@ -26,7 +26,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = (req.body as any) || {};
     const { topic, id, type, data, action } = body;
     const notificationType = topic || type;
-    const resourceId       = id || data?.id;
+    // IMPORTANTE: no formato novo do MP, data.id = ID do pagamento
+    //             id = ID do evento de notificação (diferente!)
+    // No formato antigo (IPN), id = ID do pagamento (sem data)
+    const resourceId = data?.id || id;
+
 
     // Log completo para diagnóstico
     console.log("[webhook] body:", JSON.stringify(body));
