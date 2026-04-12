@@ -215,7 +215,6 @@ export default function AdminMentoriaAluno() {
            planned_date: plannedDate,
            task_type: tt,
            subject_id: sid,
-           topic_id: bp.tid ? parseInt(bp.tid) : null,
            title,
            description: genForm.smartMode 
              ? "Estudo gerado com MOTOR INTELIGENTE priorizando seus maiores déficits diagnosticados na plataforma." 
@@ -343,7 +342,7 @@ export default function AdminMentoriaAluno() {
                     </div>
                     <div className="max-h-64 overflow-y-auto pr-2 bg-muted/30 p-3 rounded-lg border border-border space-y-3">
                       {subjects.map((sub: any) => {
-                        const subTopics = topics.filter((t: any) => t.subject_id === sub.id);
+                        const subTopics = topics.filter((t: any) => t.subject_id.toString() === sub.id.toString());
                         const isSubChecked = genForm.subjectIds.includes(sub.id);
                         
                         return (
