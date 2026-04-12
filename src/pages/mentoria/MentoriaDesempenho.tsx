@@ -1,37 +1,120 @@
+import { useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMentoriaStatus, useMentoriaEstrategia } from "@/hooks/useMentoriaData";
+import { useMentoriaStatus, useAdminStudentTasks } from "@/hooks/useMentoriaData";
 import { useUserQuestionStats } from "@/hooks/useStudyData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
-import { BarChart3, TrendingUp, Target, Activity } from "lucide-react";
+import { 
+  BarChart3, TrendingUp, Target, Activity, CheckCircle, XCircle, 
+  Clock, BookOpen, AlertTriangle, Zap, Award, CalendarCheck
+} from "lucide-react";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
+
+function InsightCard({ icon: Icon, label, value, sub, color }: { icon: any, label: string, value: string | number, sub?: string, color: string }) {
+  return (
+    <div className={cn("bg-card border border-border p-4 rounded-2xl", color)}>
+      <div className="flex items-center gap-2 mb-2 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="text-2xl font-black text-foreground">{value}</div>
+      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function ProgressBar({ value, max, color }: { value: number, max: number, color: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="w-full bg-muted rounded-full h-2">
+      <div className={cn("h-2 rounded-full transition-all duration-700", color)} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
 
 export default function MentoriaDesempenho() {
   const { user } = useAuth();
   
   const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);
-  const { data: estrategia, isLoading: loadingEstrategia } = useMentoriaEstrategia(user?.id);
+  const { data: allTasks = [], isLoading: loadingTasks } = useAdminStudentTasks(user?.id);
   const { data: questionStats = [], isLoading: loadingStats } = useUserQuestionStats(user?.id);
 
-  if (loadingStatus || loadingEstrategia || loadingStats) {
-    return <AppLayout><div className="flex justify-center p-8 text-muted-foreground">Compilando seu desempenho...</div></AppLayout>;
+  const metrics = useMemo(() => {
+    const tasks = allTasks as any[];
+
+    // --- Task Metrics ---
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const delayedTasks = tasks.filter(t => t.status === 'delayed' || t.status === 'skipped').length;
+    const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+    const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+    // --- Days with tasks ---
+    const daysWithTasks = new Set(tasks.map(t => t.planned_date)).size;
+    const daysDone = new Set(
+      tasks.filter(t => t.status === 'completed').map(t => t.planned_date)
+    ).size;
+
+    // --- Time metrics ---
+    const totalPlannedMinutes = tasks.reduce((acc: number, t: any) => acc + (t.planned_minutes || 0), 0);
+    const totalActualMinutes = tasks.filter((t: any) => t.status === 'completed')
+      .reduce((acc: number, t: any) => acc + (t.actual_minutes || t.planned_minutes || 0), 0);
+
+    // --- Questions from mentoria check-ins ---
+    const totalMentoriaQuestions = tasks.filter((t: any) => t.status === 'completed' && t.actual_questions)
+      .reduce((acc: number, t: any) => acc + (t.actual_questions || 0), 0);
+
+    // --- By Subject (agrupar por subject_id, use subjects.name) ---
+    const subjectMap: Record<string, { name: string, minutes: number, tasks: number, completed: number, questions: number }> = {};
+    tasks.forEach((t: any) => {
+      const key = t.subject_id || 'sem_materia';
+      const name = t.subjects?.name || t.title?.split(':')[0]?.trim() || 'Geral';
+      if (!subjectMap[key]) subjectMap[key] = { name, minutes: 0, tasks: 0, completed: 0, questions: 0 };
+      subjectMap[key].tasks++;
+      if (t.status === 'completed') {
+        subjectMap[key].completed++;
+        subjectMap[key].minutes += t.actual_minutes || t.planned_minutes || 0;
+        subjectMap[key].questions += t.actual_questions || 0;
+      }
+    });
+
+    const subjectList = Object.values(subjectMap).sort((a, b) => b.minutes - a.minutes);
+
+    // --- Question Stats from the platform ---
+    const totalQuestRespondidas = (questionStats as any[]).reduce((acc, s) => acc + (s.total_attempts || 0), 0);
+    const totalQuestCorretas = (questionStats as any[]).reduce((acc, s) => acc + (s.total_correct || 0), 0);
+    const precisaoGlobal = totalQuestRespondidas > 0 ? (totalQuestCorretas / totalQuestRespondidas) * 100 : 0;
+
+    // --- Insights ---
+    const insights: string[] = [];
+    if (completionRate >= 80) insights.push("🔥 Você está em ritmo excelente! Taxa de conclusão acima de 80%.");
+    else if (completionRate > 0 && completionRate < 50) insights.push("⚠️ Atenção: você completou menos da metade das tarefas planejadas.");
+    if (delayedTasks > 5) insights.push(`📌 Você acumulou ${delayedTasks} atrasos. Revise sua rotina com o mentor.`);
+    if (totalActualMinutes >= totalPlannedMinutes * 0.9 && totalPlannedMinutes > 0) insights.push("⏱️ Seu tempo real está alinhado com o planejado. Constância acima da média!");
+    if (precisaoGlobal >= 70) insights.push(`🎯 Precisão global de ${precisaoGlobal.toFixed(0)}% nas questões da plataforma. Continue firme.`);
+    else if (precisaoGlobal > 0 && precisaoGlobal < 50) insights.push(`⚠️ Precisão de ${precisaoGlobal.toFixed(0)}% nas questões. Revise os conteúdos com mais erros.`);
+
+    return {
+      totalTasks, completedTasks, delayedTasks, pendingTasks, completionRate,
+      daysWithTasks, daysDone, totalPlannedMinutes, totalActualMinutes,
+      totalMentoriaQuestions, subjectList, totalQuestRespondidas, totalQuestCorretas, precisaoGlobal, insights
+    };
+  }, [allTasks, questionStats]);
+
+  if (loadingStatus || loadingTasks || loadingStats) {
+    return <AppLayout><div className="flex justify-center p-8 text-muted-foreground animate-pulse">Compilando seu desempenho...</div></AppLayout>;
   }
 
   if (!mentoria || mentoria.status !== 'active') {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
   }
 
-  const totalRespondidas = questionStats.reduce((acc: number, stat: any) => acc + (stat.total_attempts || 0), 0);
-  const totalCorretas = questionStats.reduce((acc: number, stat: any) => acc + (stat.total_correct || 0), 0);
-  const totalErradas = questionStats.reduce((acc: number, stat: any) => acc + (stat.total_wrong || 0), 0);
-  
-  const precisaoGlobal = totalRespondidas > 0 ? (totalCorretas / totalRespondidas) * 100 : 0;
-  
-  // Weekly goal progress
-  const targetQuestions = estrategia?.weekly_questions_target || 0;
-  // This is lifetime vs weekly, but for UI mockup purposes we show total vs weekly context
-  // Ideally we would fetch just this week's productivity. We can do a mock progress based on "today is mid week" etc.
-  // Actually we have the global stats. Let's just expose the global accuracy.
+  const fmtH = (min: number) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
+  };
 
   return (
     <AppLayout>
@@ -40,67 +123,144 @@ export default function MentoriaDesempenho() {
           <div className="flex items-center justify-between mb-1">
             <Link to="/mentoria" className="text-primary text-xs font-bold uppercase hover:underline">← Visão Geral</Link>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Performance Global</h1>
-          <p className="text-sm text-muted-foreground">Analise os seus resultados e evolução</p>
+          <h1 className="text-2xl font-bold text-foreground">Meu Desempenho</h1>
+          <p className="text-sm text-muted-foreground">Analytics completo das suas missões de mentoria</p>
         </header>
 
+        {/* --- KPIs Grid --- */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-border p-4 rounded-3xl">
-            <div className="flex items-center gap-2 mb-2 text-muted-foreground">
-              <Target className="h-4 w-4" />
-              <span className="text-xs font-semibold uppercase">Precisão</span>
-            </div>
-            <div className="text-2xl font-black text-foreground">
-               {precisaoGlobal.toFixed(1)}%
-            </div>
-          </div>
-          
-          <div className="bg-card border border-border p-4 rounded-3xl">
-            <div className="flex items-center gap-2 mb-2 text-muted-foreground">
-              <Activity className="h-4 w-4" />
-              <span className="text-xs font-semibold uppercase">Resolvidas</span>
-            </div>
-            <div className="text-2xl font-black text-primary">
-               {totalRespondidas}
-            </div>
-          </div>
+          <InsightCard icon={CheckCircle}  label="Tarefas Concluídas" value={metrics.completedTasks} sub={`de ${metrics.totalTasks} planejadas`} color="" />
+          <InsightCard icon={XCircle}      label="Não Realizadas" value={metrics.delayedTasks} sub="atrasadas ou puladas" color="" />
+          <InsightCard icon={Clock}        label="Horas de Estudo" value={fmtH(metrics.totalActualMinutes)} sub={`previsto: ${fmtH(metrics.totalPlannedMinutes)}`} color="" />
+          <InsightCard icon={Target}       label="Questões (Plat.)" value={metrics.totalQuestRespondidas} sub={`${metrics.precisaoGlobal.toFixed(0)}% de acerto`} color="" />
         </div>
-        
-        <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-4 border-b border-border pb-3">
-            <BarChart3 className="h-4 w-4 text-primary" />
-            <h2 className="font-bold text-sm">Resumo do Ciclo</h2>
-          </div>
-          
-          <div className="space-y-4">
-             <div className="space-y-1 text-sm">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Questões Direcionadas</span>
-                  <span className="font-semibold text-foreground">{targetQuestions} / semana</span>
-                </div>
-                {/* Visual Progress Bar just to represent */}
-                <div className="w-full bg-muted rounded-full h-2 mt-2">
-                  <div className="bg-primary h-2 rounded-full" style={{ width: `70%` }}></div>
-                </div>
-             </div>
 
-             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-                <div>
-                   <p className="text-xs text-muted-foreground mb-1">Acertos Constatados</p>
-                   <p className="font-bold text-success text-xl">{totalCorretas}</p>
-                </div>
-                <div>
-                   <p className="text-xs text-muted-foreground mb-1">Erros Constatados</p>
-                   <p className="font-bold text-destructive text-xl">{totalErradas}</p>
-                </div>
-             </div>
+        {/* --- Completion Overview --- */}
+        <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <CalendarCheck className="h-4 w-4 text-primary" />
+            <h2 className="font-bold text-sm">Execução do Ciclo</h2>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Taxa de Conclusão</span>
+                <span className="font-bold text-foreground">{metrics.completionRate.toFixed(0)}%</span>
+              </div>
+              <ProgressBar value={metrics.completedTasks} max={metrics.totalTasks} color="bg-success" />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 pt-2">
+              <div className="text-center p-3 rounded-xl bg-success/10 border border-success/20">
+                <p className="text-xl font-black text-success">{metrics.completedTasks}</p>
+                <p className="text-[10px] text-muted-foreground mt-1 font-semibold uppercase">Feitas</p>
+              </div>
+              <div className="text-center p-3 rounded-xl bg-warning/10 border border-warning/20">
+                <p className="text-xl font-black text-warning">{metrics.pendingTasks}</p>
+                <p className="text-[10px] text-muted-foreground mt-1 font-semibold uppercase">Pendentes</p>
+              </div>
+              <div className="text-center p-3 rounded-xl bg-destructive/10 border border-destructive/20">
+                <p className="text-xl font-black text-destructive">{metrics.delayedTasks}</p>
+                <p className="text-[10px] text-muted-foreground mt-1 font-semibold uppercase">Atrasadas</p>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Dias com tarefas</p>
+                <p className="font-bold text-foreground">{metrics.daysWithTasks} dias</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Dias totalmente cumpridos</p>
+                <p className="font-bold text-foreground">{metrics.daysDone} dias</p>
+              </div>
+            </div>
           </div>
         </section>
 
-        <div className="bg-primary/10 border border-primary/20 rounded-3xl p-6 relative overflow-hidden">
+        {/* --- Tempo e Questões --- */}
+        <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <Activity className="h-4 w-4 text-primary" />
+            <h2 className="font-bold text-sm">Tempo & Questões</h2>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Tempo real vs previsto</span>
+                <span className="font-bold">{fmtH(metrics.totalActualMinutes)} / {fmtH(metrics.totalPlannedMinutes)}</span>
+              </div>
+              <ProgressBar value={metrics.totalActualMinutes} max={metrics.totalPlannedMinutes} color="bg-primary" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="bg-muted/30 rounded-xl p-3 border border-border">
+                <p className="text-xs text-muted-foreground">Questões (Check-in)</p>
+                <p className="text-xl font-black text-foreground mt-1">{metrics.totalMentoriaQuestions}</p>
+                <p className="text-[10px] text-muted-foreground">via check-ins do ciclo</p>
+              </div>
+              <div className="bg-muted/30 rounded-xl p-3 border border-border">
+                <p className="text-xs text-muted-foreground">Precisão Geral</p>
+                <p className={cn("text-xl font-black mt-1", metrics.precisaoGlobal >= 70 ? "text-success" : metrics.precisaoGlobal >= 50 ? "text-warning" : "text-destructive")}>
+                  {metrics.precisaoGlobal.toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-muted-foreground">questões da plataforma</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* --- Por Matéria --- */}
+        {metrics.subjectList.length > 0 && (
+          <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <BookOpen className="h-4 w-4 text-primary" />
+              <h2 className="font-bold text-sm">Por Matéria</h2>
+            </div>
+
+            <div className="space-y-4">
+              {metrics.subjectList.slice(0, 10).map((sub, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-semibold text-foreground truncate max-w-[60%]">{sub.name}</span>
+                    <span className="text-muted-foreground">{fmtH(sub.minutes)} · {sub.completed}/{sub.tasks} tarefas</span>
+                  </div>
+                  <ProgressBar value={sub.completed} max={sub.tasks} color="bg-primary/70" />
+                  {sub.questions > 0 && (
+                    <p className="text-[10px] text-muted-foreground">{sub.questions} questões resolvidas no ciclo</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* --- Insights --- */}
+        {metrics.insights.length > 0 && (
+          <section className="bg-card border border-border rounded-3xl p-5 space-y-3">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <Zap className="h-4 w-4 text-primary" />
+              <h2 className="font-bold text-sm">Insights do Sistema</h2>
+            </div>
+            <div className="space-y-2">
+              {metrics.insights.map((insight, i) => (
+                <div key={i} className="flex items-start gap-2 p-3 bg-muted/30 rounded-xl border border-border text-sm">
+                  <span className="leading-relaxed">{insight}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className="bg-primary/10 border border-primary/20 rounded-3xl p-5 relative overflow-hidden">
            <TrendingUp className="absolute -right-4 -bottom-4 h-24 w-24 text-primary opacity-20" />
-           <h3 className="font-bold text-primary mb-1">O seu alvo é a prova.</h3>
-           <p className="text-xs text-primary/80">O mentor acessa relatórios aprofundados dos seus pontos fracos por disciplinas pelo Painel de Gestão.</p>
+           <div className="flex items-center gap-2 mb-1">
+              <Award className="h-4 w-4 text-primary" />
+              <h3 className="font-bold text-primary text-sm">Foco máximo.</h3>
+           </div>
+           <p className="text-xs text-primary/80">O mentor acessa relatórios ainda mais aprofundados com análise por tópico no Painel de Gestão.</p>
         </div>
       </div>
     </AppLayout>
