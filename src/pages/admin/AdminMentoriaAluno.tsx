@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { AdminLayout } from "@/components/AdminLayout";
 import { 
@@ -43,6 +43,7 @@ export default function AdminMentoriaAluno() {
     days: 7,
     blockMinutes: 60,
     subjectIds: [] as string[],
+    topicsText: "", // Temas / Assuntos
     types: ['theory', 'questions', 'review'] as TaskType[]
   });
 
@@ -63,6 +64,10 @@ export default function AdminMentoriaAluno() {
       });
     }
   };
+
+  useEffect(() => {
+    handleLoadDiagForm();
+  }, [diagnostico]);
 
   const saveDiagnostico = () => {
     if (!id) return;
@@ -101,9 +106,13 @@ export default function AdminMentoriaAluno() {
     const dailyMin = diagnostico?.daily_available_minutes || 120;
     const blocksPerDay = Math.floor(dailyMin / genForm.blockMinutes) || 1;
     
+    // Process topics
+    const customTopics = genForm.topicsText.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    
     let tasks: Omit<MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[] = [];
     let subjectIndex = 0;
     let typeIndex = 0;
+    let topicIndex = 0;
 
     for (let dayOffset = 0; dayOffset < genForm.days; dayOffset++) {
       const d = new Date(genForm.startDate + 'T12:00:00Z');
@@ -114,13 +123,16 @@ export default function AdminMentoriaAluno() {
          const sid = genForm.subjectIds[subjectIndex % genForm.subjectIds.length];
          const tt = genForm.types[typeIndex % genForm.types.length];
          const subjectName = subjects.find((s: any) => s.id === sid)?.name || "Matéria";
+         
+         const currentTopic = customTopics.length > 0 ? customTopics[topicIndex % customTopics.length] : "";
+         const baseName = currentTopic ? `${subjectName} - ${currentTopic}` : subjectName;
 
          let title = "";
-         if (tt === 'theory') title = `Teoria: ${subjectName}`;
-         else if (tt === 'questions') title = `Minibateria de Questões: ${subjectName}`;
-         else if (tt === 'review') title = `Revisão Ativa: ${subjectName}`;
-         else if (tt === 'reading') title = `Cartões / Leitura: ${subjectName}`;
-         else title = `Estudar ${subjectName}`;
+         if (tt === 'theory') title = `Teoria: ${baseName}`;
+         else if (tt === 'questions') title = `Minibateria de Questões: ${baseName}`;
+         else if (tt === 'review') title = `Revisão Ativa: ${baseName}`;
+         else if (tt === 'reading') title = `Cartões / Leitura: ${baseName}`;
+         else title = `Estudar ${baseName}`;
 
          tasks.push({
            user_id: id,
@@ -137,7 +149,10 @@ export default function AdminMentoriaAluno() {
          } as any);
 
          subjectIndex++;
-         if (subjectIndex % genForm.subjectIds.length === 0) typeIndex++; // Cycle types after all subjects
+         if (subjectIndex % genForm.subjectIds.length === 0) {
+            typeIndex++; // Cycle types after all subjects
+            topicIndex++; // Cycle topics after all subjects along with types
+         }
       }
     }
 
@@ -186,18 +201,24 @@ export default function AdminMentoriaAluno() {
         {activeTab === 'diagnostico' && (
           <div className="bg-card border border-border p-5 rounded-2xl space-y-4 max-w-2xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
-              <h2 className="font-bold flex items-center gap-2"><Target className="h-4 w-4" /> Dados Base</h2>
-              <button onClick={handleLoadDiagForm} className="text-xs text-primary font-bold hover:underline">Carregar Atual</button>
+              <h2 className="font-bold flex items-center gap-2"><Target className="h-4 w-4" /> Diagnóstico do Aluno</h2>
             </div>
+
+            {diagnostico?.history_report && (
+              <div className="bg-warning/10 border border-warning/20 p-4 rounded-xl space-y-2 mb-4">
+                 <h3 className="text-xs font-bold text-warning uppercase">Relato do Aluno na Inscrição</h3>
+                 <p className="text-sm text-foreground/80 italic">"{diagnostico.history_report}"</p>
+              </div>
+            )}
             
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Objetivo Principal / Concurso</label>
+                <label className="text-xs font-semibold text-muted-foreground">Objetivo Principal / Concurso Declarado</label>
                 <input type="text" value={diagForm.objective} onChange={e => setDiagForm({...diagForm, objective: e.target.value})} className="w-full bg-muted border border-border rounded-lg p-2 mt-1 text-sm focus:outline-primary/50" placeholder="Ex: PRF 2026" />
               </div>
               
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Minutos Diários Disponíveis</label>
+                <label className="text-xs font-semibold text-muted-foreground">Minutos Diários Disponíveis Declarados</label>
                 <input type="number" value={diagForm.daily_available_minutes} onChange={e => setDiagForm({...diagForm, daily_available_minutes: parseInt(e.target.value)})} className="w-full bg-muted border border-border rounded-lg p-2 mt-1 text-sm focus:outline-primary/50" />
               </div>
               
@@ -207,7 +228,7 @@ export default function AdminMentoriaAluno() {
               </div>
 
               <button onClick={saveDiagnostico} disabled={diagMutation.isPending} className="px-4 py-2 bg-primary text-primary-foreground font-bold rounded-lg text-sm disabled:opacity-50 hover:bg-primary/90">
-                Salvar Diagnóstico
+                Salvar Diagnóstico Final
               </button>
             </div>
           </div>
@@ -248,6 +269,17 @@ export default function AdminMentoriaAluno() {
                         </label>
                       ))}
                     </div>
+                 </div>
+
+                 <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-2 block">Temas / Assuntos (Opcional)</label>
+                    <textarea 
+                      value={genForm.topicsText}
+                      onChange={(e) => setGenForm({...genForm, topicsText: e.target.value})}
+                      placeholder="Ex: MTP 01, Inquérito Policial, Crase..." 
+                      className="w-full bg-muted border border-border rounded-lg p-2 text-sm focus:outline-primary/50 h-16 resize-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Separe por vírgulas. A Engine irá ciclar os temas pelas missões.</p>
                  </div>
 
                  <div>
