@@ -98,9 +98,12 @@ export default function FlashcardsPage() {
   const [sessionQueue, setSessionQueue] = useState<typeof flashcards>([]);
   const [isFinished, setIsFinished] = useState(false);
 
-  // Consider all active subjects that have flashcards
+  // Mostrar apenas matérias que tenham pelo menos 1 flashcard disponível para o curso
   const filteredSubjects = subjects.filter(sub => flashcards.some(f => f.subjectId === sub.id));
-  const filteredTopics = topics.filter(t => String(t.subject_id) === selectedSubjectId);
+  // Temas da matéria selecionada com pelo menos 1 flashcard — sem disabled, sem 0
+  const filteredTopics = topics
+    .filter(t => String(t.subject_id) === selectedSubjectId)
+    .filter(t => flashcards.some(f => f.topicId === String(t.id)));
 
   // Triggered when a topic is chosen: build the queue ONCE so it doesn't shuffle mid-session
   const startSession = (topicId: string) => {
@@ -219,20 +222,29 @@ export default function FlashcardsPage() {
           </div>
           <div className="space-y-3">
             {filteredTopics.map(topic => {
-              const count = flashcards.filter(f => f.topicId === String(topic.id) || f.subjectId === selectedSubjectId && !f.topicId).length;
+              const count = flashcards.filter(f => f.topicId === String(topic.id)).length;
               return (
-                <button key={topic.id} onClick={() => startSession(String(topic.id))} disabled={count === 0}
-                  className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+                <button key={topic.id} onClick={() => startSession(String(topic.id))}
+                  className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
                   <span className="font-medium text-sm text-foreground">{topic.name}</span>
                   <Badge variant="secondary">{count} cards</Badge>
                 </button>
               );
             })}
-            <button onClick={() => startSession("general")}
-                className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
-              <span className="font-medium text-sm text-foreground">Todos os tópicos / Geral</span>
-              <Badge variant="secondary">{flashcards.filter(f => f.subjectId === selectedSubjectId).length} cards</Badge>
-            </button>
+            {(() => {
+              const generalCount = flashcards.filter(f => f.subjectId === selectedSubjectId).length;
+              if (generalCount === 0) return null;
+              return (
+                <button onClick={() => startSession("general")}
+                    className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
+                  <span className="font-medium text-sm text-foreground">Todos os tópicos / Geral</span>
+                  <Badge variant="secondary">{generalCount} cards</Badge>
+                </button>
+              );
+            })()}
+            {filteredTopics.length === 0 && flashcards.filter(f => f.subjectId === selectedSubjectId).length === 0 && (
+              <p className="text-center text-muted-foreground py-8">Nenhum tema com flashcards disponíveis.</p>
+            )}
           </div>
         </div>
       </AppLayout>

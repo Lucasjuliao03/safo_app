@@ -136,9 +136,6 @@ export default function QuestoesPage() {
   const [sessionQueue, setSessionQueue] = useState<typeof questions>([]);
   const [isFinished, setIsFinished] = useState(false);
 
-  // Subjects are now strictly filtered via the hook based on courseId.
-  const filteredSubjects = subjects;
-  
   // Filter questions by format and source
   const sourceFilteredQuestions = questions.filter(q => {
     if (selectedFormat === "true_false") {
@@ -151,8 +148,15 @@ export default function QuestoesPage() {
     return true;
   });
 
+  // Mostrar apenas matérias que tenham pelo menos 1 questão disponível (curso + filtro de formato/origem)
+  const filteredSubjects = subjects.filter(sub =>
+    sourceFilteredQuestions.some(q => q.subjectId === sub.id)
+  );
+
+  // Temas da matéria selecionada que tenham pelo menos 1 questão — sem disabled, sem 0
   const filteredTopics = topics
     .filter(t => String(t.subject_id) === selectedSubjectId)
+    .filter(t => sourceFilteredQuestions.some(q => q.topicId === String(t.id)))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const startSession = (topicId: string) => {
@@ -372,20 +376,29 @@ export default function QuestoesPage() {
           </div>
           <div className="space-y-3">
             {filteredTopics.map(topic => {
-              const count = sourceFilteredQuestions.filter(q => q.topicId === String(topic.id) || q.subjectId === selectedSubjectId && !q.topicId).length;
+              const count = sourceFilteredQuestions.filter(q => q.topicId === String(topic.id)).length;
               return (
-                <button key={topic.id} onClick={() => startSession(String(topic.id))} disabled={count === 0}
-                  className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+                <button key={topic.id} onClick={() => startSession(String(topic.id))}
+                  className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
                   <span className="font-medium text-sm text-foreground">{topic.name}</span>
                   <Badge variant="secondary">{count} qsts</Badge>
                 </button>
               );
             })}
-            <button onClick={() => startSession("general")}
-                className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
-              <span className="font-medium text-sm text-foreground">Todos os tópicos / Geral</span>
-              <Badge variant="secondary">{sourceFilteredQuestions.filter(q => q.subjectId === selectedSubjectId).length} qsts</Badge>
-            </button>
+            {(() => {
+              const generalCount = sourceFilteredQuestions.filter(q => q.subjectId === selectedSubjectId).length;
+              if (generalCount === 0) return null;
+              return (
+                <button onClick={() => startSession("general")}
+                    className="w-full p-4 rounded-xl bg-card border border-border text-left flex justify-between items-center hover:border-primary/50 transition-all active:scale-[0.98]">
+                  <span className="font-medium text-sm text-foreground">Todos os tópicos / Geral</span>
+                  <Badge variant="secondary">{generalCount} qsts</Badge>
+                </button>
+              );
+            })()}
+            {filteredTopics.length === 0 && sourceFilteredQuestions.filter(q => q.subjectId === selectedSubjectId).length === 0 && (
+              <p className="text-center text-muted-foreground py-8">Nenhum tema com questões disponíveis.</p>
+            )}
           </div>
         </div>
       </AppLayout>
