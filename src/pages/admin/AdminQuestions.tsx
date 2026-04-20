@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { useAdminQuestions, useCreateQuestion, useUpdateQuestion, useDeleteQuestion, useAdminSubjects, useAdminTopics } from "@/hooks/useAdminData";
+import { useAdminQuestions, useCreateQuestion, useUpdateQuestion, useDeleteQuestion, useAdminSubjects, useAdminTopics, useAdminExamBoards, useCreateExamBoard } from "@/hooks/useAdminData";
 import { Plus, Edit2, Filter, X, Trash2, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminQuestionImport } from "@/components/AdminQuestionImport";
@@ -12,10 +12,12 @@ export default function AdminQuestions() {
   const { data: questions = [], isLoading } = useAdminQuestions({ subjectId: subjectFilter, topicId: topicFilter });
   const { data: subjects = [] } = useAdminSubjects();
   const { data: topics = [] } = useAdminTopics();
+  const { data: boards = [] } = useAdminExamBoards();
 
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
   const deleteMutation = useDeleteQuestion();
+  const createBoardMutation = useCreateExamBoard();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -31,6 +33,9 @@ export default function AdminQuestions() {
   const [subjectId, setSubjectId] = useState<number>(0);
   const [topicId, setTopicId] = useState<number>(0);
   const [isActive, setIsActive] = useState(true);
+  
+  const [questionType, setQuestionType] = useState<"ia"|"banca">("ia");
+  const [boardId, setBoardId] = useState<number>(0);
 
   const openForm = (q?: any) => {
     if (q) {
@@ -49,6 +54,8 @@ export default function AdminQuestions() {
       setSubjectId(q.subject_id || 0);
       setTopicId(q.topic_id || 0);
       setIsActive(q.is_active ?? true);
+      setQuestionType((q.question_type as "ia"|"banca") || "ia");
+      setBoardId(q.board_id || 0);
     } else {
       setEditingId(null);
       setFormat("multiple_choice");
@@ -60,6 +67,8 @@ export default function AdminQuestions() {
       setSubjectId(subjectFilter || 0);
       setTopicId(0);
       setIsActive(true);
+      setQuestionType("ia");
+      setBoardId(0);
     }
     setIsFormOpen(true);
   };
@@ -101,7 +110,8 @@ export default function AdminQuestions() {
       edict_id: 1,
       is_active: isActive,
       status: "published",
-      question_type: format === "true_false" ? "banca" : "banca"
+      question_type: questionType,
+      board_id: questionType === "banca" ? (boardId || null) : null
     };
 
     if (editingId) {
@@ -171,6 +181,45 @@ export default function AdminQuestions() {
                   <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer px-2">
                     <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded border-border" /> Ativa
                   </label>
+                  <select value={questionType} onChange={e => { setQuestionType(e.target.value as "ia"|"banca"); if(e.target.value === "ia") setBoardId(0); }} className="text-sm rounded-lg border border-border bg-background px-3 py-2">
+                    <option value="ia">Autoral / IA</option>
+                    <option value="banca">Banca Externa</option>
+                  </select>
+                  {questionType === "banca" ? (
+                    <select 
+                       value={boardId} 
+                       onChange={e => {
+                         if (e.target.value === "new") {
+                           const name = window.prompt("✍️ Digite o nome da Nova Banca (Ex: VUNESP, CESGRANRIO):");
+                           if (name && name.trim()) {
+                             const cleanName = name.trim();
+                             const alreadyExists = boards.find(b => b.name.toLowerCase() === cleanName.toLowerCase());
+                             
+                             if (alreadyExists) {
+                                setBoardId(alreadyExists.id);
+                             } else {
+                               createBoardMutation.mutate(cleanName, {
+                                 onSuccess: (newBoard) => setBoardId(newBoard.id),
+                                 onError: (e: any) => alert("Banca já existe sob esse nome exato ou ocorreu um conflito. Selecione-a na lista principal.")
+                               });
+                             }
+                           }
+                         } else {
+                           setBoardId(Number(e.target.value));
+                         }
+                       }} 
+                       className="text-sm rounded-lg border border-border bg-background px-3 py-2" 
+                       disabled={createBoardMutation.isPending}
+                    >
+                      <option value={0}>Selecione a Banca...</option>
+                      <option value="new" className="font-bold text-primary bg-primary/10">➕ Digitar/Criar Nova Banca...</option>
+                      {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  ) : (
+                    <select disabled className="text-sm rounded-lg border border-transparent bg-muted/50 text-muted-foreground px-3 py-2">
+                      <option>Não aplicável a I.A</option>
+                    </select>
+                  )}
                 </div>
 
                 <textarea placeholder="Explicação do Professor (Opcional mas recomendado)" value={explanation} onChange={e => setExplanation(e.target.value)} className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 min-h-[80px]" />
@@ -235,7 +284,7 @@ export default function AdminQuestions() {
               <thead className="text-xs text-muted-foreground uppercase bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
                 <tr>
                   <th className="px-4 py-3 font-semibold">ID</th>
-                  <th className="px-4 py-3 font-semibold">Enunciado</th>
+                  <th className="px-4 py-3 font-semibold">Origem / Enunciado</th>
                   <th className="px-4 py-3 font-semibold">Matéria / Tema</th>
                   <th className="px-4 py-3 font-semibold text-center">Formato</th>
                   <th className="px-4 py-3 font-semibold text-center">Nível</th>
@@ -249,19 +298,55 @@ export default function AdminQuestions() {
                 ) : questions.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Nenhuma questão encontrada para os filtros atuais.</td></tr>
                 ) : (
-                  questions.map(q => (
-                    <tr key={q.id} className="hover:bg-muted/30 transition-colors group">
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">#{q.id}</td>
-                      <td className="px-4 py-3 font-medium text-foreground max-w-[300px] truncate" title={q.statement}>{q.statement.substring(0, 60)}{q.statement.length > 60 ? "..." : ""}</td>
-                      <td className="px-4 py-3">
+                  [...questions].sort((a, b) => {
+                     const isMissing = (q: any) => {
+                        if (!q.correct_option) return true;
+                        const val = String(q.correct_option).trim().toLowerCase();
+                        if (val === '' || val === 'n/a') return true;
+                        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
+                        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
+                        return false;
+                     };
+                     
+                     const aMissing = isMissing(a);
+                     const bMissing = isMissing(b);
+                     if (aMissing && !bMissing) return -1;
+                     if (!aMissing && bMissing) return 1;
+                     return b.id - a.id;
+                  }).map(q => {
+                     const isMissingAnswer = (() => {
+                        if (!q.correct_option) return true;
+                        const val = String(q.correct_option).trim().toLowerCase();
+                        if (val === '' || val === 'n/a') return true;
+                        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
+                        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
+                        return false;
+                     })();
+                     
+                    return (
+                    <tr key={q.id} className={cn("transition-colors group", isMissingAnswer ? "bg-destructive/10 border-l-4 border-l-destructive hover:bg-destructive/20" : "hover:bg-muted/30")}>
+                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">#{q.id}</td>
+                       <td className="px-4 py-3 border-r border-transparent">
+                          <div className="flex items-center gap-2 max-w-[350px]">
+                             {q.question_type === 'ia' ? (
+                                <span className="bg-primary/20 text-primary text-[9px] font-black uppercase px-2 py-0.5 rounded border border-primary/20 shrink-0 whitespace-nowrap">I.A</span>
+                             ) : (
+                                <span className="bg-foreground/10 text-foreground text-[9px] font-black uppercase px-2 py-0.5 rounded border border-border shrink-0 whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]" title={(q as any).exam_boards?.name || 'Banca Externa'}>{(q as any).exam_boards?.name || 'Banca'}</span>
+                             )}
+                             <span className="font-medium text-foreground truncate text-sm" title={q.statement}>
+                                {q.statement.substring(0, 50)}{q.statement.length > 50 ? "..." : ""}
+                             </span>
+                          </div>
+                       </td>
+                       <td className="px-4 py-3">
                         <div className="flex flex-col">
                           <span className="font-semibold text-xs">{(q as any).subjects?.name || "Sem Matéria"}</span>
                           <span className="text-[10px] text-muted-foreground">{(q as any).topics?.name || "Sem Tema"}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] uppercase font-bold bg-muted text-muted-foreground">
-                          {q.format === 'true_false' ? 'C/E' : 'Múltipla'}
+                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isMissingAnswer ? "bg-destructive text-destructive-foreground animate-pulse" : "bg-muted text-muted-foreground")}>
+                          {isMissingAnswer ? "SEM GABARITO" : (q.format === 'true_false' ? 'C/E' : 'Múltipla')}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -281,7 +366,8 @@ export default function AdminQuestions() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

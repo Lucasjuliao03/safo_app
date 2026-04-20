@@ -1,13 +1,12 @@
 import { useLocation, Link } from "react-router-dom";
-import { Home, BookOpen, Layers, FileText, User, Trophy, Target } from "lucide-react";
+import { Home, BookOpen, Layers, FileText, User, Trophy, Target, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { path: "/", label: "Início", icon: Home },
-  { path: "/questoes", label: "Questões", icon: BookOpen },
-  { path: "/flashcards", label: "Cards", icon: Layers },
+  { path: "/estudos", label: "Estudos", icon: BookOpen },
+  { path: "/patrulhamento", label: "Patrulha", icon: Map },
   { path: "/mentoria", label: "Mentoria", icon: Target },
-  { path: "/resumos", label: "Resumos", icon: FileText },
   { path: "/ranking", label: "Ranking", icon: Trophy },
   { path: "/perfil", label: "Perfil", icon: User },
 ];
@@ -21,7 +20,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-lg safe-bottom">
       <div className="mx-auto flex max-w-lg items-center justify-around px-1 py-1">
         {navItems.map((item) => {
-          const active = pathname === item.path;
+          const active = pathname === item.path || (item.path === '/estudos' && ['/questoes', '/flashcards', '/resumos'].includes(pathname));
           return (
             <Link
               key={item.path}

@@ -3,7 +3,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMentoriaStatus, useMentoriaTasks, useCheckInTask } from "@/hooks/useMentoriaData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
-import { CheckCircle, Clock, FileText, ChevronLeft, CalendarClock, MessageSquare, Play, Square, Timer } from "lucide-react";
+import { CheckCircle, Clock, FileText, ChevronLeft, CalendarClock, MessageSquare, Play, Square, Timer, BookOpen, Zap, RotateCcw, BookMarked, Dumbbell } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -165,7 +165,10 @@ export default function MentoriaExecucao() {
 
           <header>
             <h1 className="text-xl font-bold text-foreground">{activeTask.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">Disciplina: {activeTask.subjects?.name || "Geral"}</p>
+            <p className="text-sm text-muted-foreground mt-1 text-primary font-medium tracking-tight">
+              {activeTask.subjects?.name || "Geral"}
+              {activeTask.title.includes('›') && ` — ${activeTask.title.split('›')[1].split('⚠️')[0].split('✅')[0].trim()}`}
+            </p>
           </header>
 
           <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
@@ -306,41 +309,96 @@ export default function MentoriaExecucao() {
           })}
         </div>
 
-        <div className="space-y-3">
-          {tasks.length > 0 ? tasks.map((task: MentoriaTarefa) => {
+        {/* Resumo do dia */}
+        {tasks.length > 0 && (
+          <div className="flex items-center justify-between bg-muted/40 border border-border rounded-xl px-4 py-2.5 text-xs">
+            <span className="text-muted-foreground">
+              <span className="font-bold text-foreground">{tasks.length}</span> {tasks.length === 1 ? 'tarefa' : 'tarefas'} hoje
+            </span>
+            <span className="text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              <span className="font-bold text-foreground">
+                {Math.floor((tasks as MentoriaTarefa[]).reduce((s, t) => s + (t.planned_minutes || 0), 0) / 60)}h
+                {(tasks as MentoriaTarefa[]).reduce((s, t) => s + (t.planned_minutes || 0), 0) % 60 > 0
+                  ? ` ${(tasks as MentoriaTarefa[]).reduce((s, t) => s + (t.planned_minutes || 0), 0) % 60}min`
+                  : ''}
+              </span>
+              &nbsp;planejadas
+            </span>
+          </div>
+        )}
+
+        <div className="space-y-2.5">
+          {tasks.length > 0 ? (tasks as MentoriaTarefa[]).map((task) => {
             const isCompleted = task.status === 'completed';
-            const isDelayed = task.status === 'delayed';
+            const isDelayed   = task.status === 'delayed';
+
+            // Ícone e cor por tipo de tarefa
+            const typeConfig: Record<string, { icon: React.ComponentType<{className?: string}>, color: string, label: string }> = {
+              theory:     { icon: BookOpen,    color: 'text-blue-500',   label: 'Teoria'    },
+              questions:  { icon: Zap,         color: 'text-primary',    label: 'Questões'  },
+              review:     { icon: RotateCcw,   color: 'text-warning',    label: 'Revisão'   },
+              simulation: { icon: Dumbbell,    color: 'text-destructive', label: 'Simulado' },
+              reading:    { icon: BookMarked,  color: 'text-success',    label: 'Leitura'   },
+            };
+            const tc = typeConfig[task.task_type] || typeConfig.theory;
+            const TypeIcon = tc.icon;
+
+            // Extrair matéria do título (formato: "📖 Teoria: Matéria ⚠️")
+            const subjectName = task.subjects?.name || 'Instrução Geral';
 
             return (
-              <button 
-                key={task.id} 
+              <button
+                key={task.id}
                 onClick={() => handleOpenTask(task)}
                 className={cn(
-                  "w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all active:scale-[0.98]",
-                  isCompleted ? "bg-success/5 border-success/30 shadow-sm" : 
-                  isDelayed ? "bg-warning/5 border-warning/30" : "bg-card border-border hover:border-primary/40 shadow-sm"
+                  "w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all active:scale-[0.98]",
+                  isCompleted ? "bg-success/5 border-success/30 shadow-sm" :
+                  isDelayed   ? "bg-warning/5 border-warning/30" :
+                                "bg-card border-border hover:border-primary/40 shadow-sm"
                 )}
               >
+                {/* Ícone do tipo */}
                 <div className={cn(
-                  "flex items-center justify-center w-12 h-12 rounded-xl border shrink-0",
-                  isCompleted ? "bg-success/20 border-success/30 text-success" : 
-                  isDelayed ? "bg-warning/20 border-warning/30 text-warning" : "bg-primary/10 border-primary/20 text-primary"
+                  "flex items-center justify-center w-10 h-10 rounded-xl border shrink-0",
+                  isCompleted ? "bg-success/20 border-success/30 text-success" :
+                  isDelayed   ? "bg-warning/20 border-warning/30 text-warning" :
+                                "bg-muted/60 border-border"
                 )}>
-                  {isCompleted ? <CheckCircle className="h-6 w-6" /> : 
-                   isDelayed ? <CalendarClock className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
+                  {isCompleted ? <CheckCircle className="h-5 w-5 text-success" /> :
+                   isDelayed   ? <CalendarClock className="h-5 w-5 text-warning" /> :
+                                 <TypeIcon className={cn("h-5 w-5", tc.color)} />}
                 </div>
+
+                {/* Conteúdo */}
                 <div className="flex-1 min-w-0">
-                  <p className={cn("font-semibold truncate", isCompleted && "text-muted-foreground line-through")}>{task.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{task.subjects?.name || "Instrução Geral"}</p>
+                  {/* Matéria - Tema em destaque */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 truncate bg-muted/50 w-fit px-1.5 rounded border border-border/40">
+                    {task.subjects?.name || 'Geral'}
+                    {task.title.includes('›') && ` — ${task.title.split('›')[1].split('⚠️')[0].split('✅')[0].trim()}`}
+                  </p>
+                  {/* Tipo da atividade */}
+                  <p className={cn("font-semibold text-sm leading-tight", isCompleted && "text-muted-foreground line-through")}>
+                    {tc.label}
+                  </p>
+                  {/* Badge de prioridade se houver */}
+                  {(task.title.includes('⚠️') || task.title.includes('✅')) && (
+                    <p className="text-[10px] mt-0.5">
+                      {task.title.includes('⚠️') ? <span className="text-destructive font-semibold">⚠️ Prioridade Alta</span> :
+                                                    <span className="text-success font-semibold">✅ Manutenção</span>}
+                    </p>
+                  )}
                 </div>
-                <div className="shrink-0 text-right">
-                   {isCompleted ? (
-                     <span className="text-[10px] font-bold text-success uppercase tracking-wider bg-success/10 px-2 py-1 rounded">Feito</span>
-                   ) : isDelayed ? (
-                     <span className="text-[10px] font-bold text-warning uppercase tracking-wider bg-warning/10 px-2 py-1 rounded">Atrasado</span>
-                   ) : (
-                     <span className="text-xs font-semibold text-foreground/50">{task.planned_minutes} min</span>
-                   )}
+
+                {/* Tempo e status */}
+                <div className="shrink-0 text-right space-y-1">
+                  {isCompleted ? (
+                    <span className="text-[10px] font-bold text-success uppercase tracking-wider bg-success/10 px-2 py-1 rounded block">Feito</span>
+                  ) : isDelayed ? (
+                    <span className="text-[10px] font-bold text-warning uppercase tracking-wider bg-warning/10 px-2 py-1 rounded block">Atrasado</span>
+                  ) : (
+                    <span className="text-xs font-bold text-foreground/70 bg-muted px-2 py-1 rounded block">{task.planned_minutes}m</span>
+                  )}
                 </div>
               </button>
             );

@@ -278,8 +278,33 @@ export function useUpdateTopic() {
 }
 
 // ---------------------------------------------------------
-// CONTENT MODULE (FLASHCARDS & SUMMARIES)
+// CONTENT MODULE (FLASHCARDS & SUMMARIES & BOARDS)
 // ---------------------------------------------------------
+
+export function useAdminExamBoards() {
+  return useQuery({
+    queryKey: ["admin_exam_boards"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("exam_boards").select("*").order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useCreateExamBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase.from("exam_boards").upsert({ name }, { onConflict: 'name' }).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin_exam_boards"] });
+    },
+  });
+}
 
 export function useAdminFlashcards(filters?: { subjectId?: number; topicId?: number }) {
   return useQuery({
@@ -425,7 +450,8 @@ export function useAdminQuestions(filters?: { subjectId?: number; topicId?: numb
         .select(`
           *,
           subjects(name),
-          topics(name)
+          topics(name),
+          exam_boards(name)
         `)
         .order("created_at", { ascending: false });
         

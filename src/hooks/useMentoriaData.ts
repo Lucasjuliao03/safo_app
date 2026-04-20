@@ -129,17 +129,124 @@ export function useAdminActivateMentoria() {
 export function useApplyMentoria() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (props: { userId: string, diagForm: Partial<mentoriaService.MentoriaDiagnostico> }) => {
-       // Insert pending status
-       const { error: alError } = await supabase.from('mentoria_alunos').insert({ user_id: props.userId, status: 'pending' });
-       if (alError) throw alError;
-       // Insert user initial diagnostic
-       const { error: diagError } = await supabase.from('mentoria_diagnosticos').insert({ ...props.diagForm, user_id: props.userId });
-       if (diagError) throw diagError;
-       return true;
+    mutationFn: async (props: {
+      userId: string;
+      diagForm: Partial<mentoriaService.MentoriaDiagnostico>;
+      subjects?: mentoriaService.PlanSubjectInput[];
+    }) => {
+      // Extrair courseId ANTES de qualquer operação no banco (não é coluna do DB)
+      const { courseId: _courseId, ...diagFormClean } = props.diagForm as any;
+      const courseId = String(_courseId || '');
+
+      // 1. Ativar mentoria do aluno
+      const { error: alError } = await supabase
+        .from('mentoria_alunos')
+        .upsert({ user_id: props.userId, status: 'active' }, { onConflict: 'user_id' });
+      if (alError) throw alError;
+
+      // 2a. Salvar colunas base do diagnóstico (sempre existem no banco)
+      const basePayload = {
+        user_id:                 props.userId,
+        objective:               diagFormClean.objective,
+        exam_date:               diagFormClean.exam_date || null,
+        daily_available_minutes: diagFormClean.daily_available_minutes,
+        strong_subjects:         diagFormClean.strong_subjects,
+        weak_subjects:           diagFormClean.weak_subjects,
+        history_report:          diagFormClean.history_report,
+        method_style:            diagFormClean.method_style,
+        mentor_notes:            diagFormClean.mentor_notes || '',
+        updated_at:              new Date().toISOString(),
+      };
+      const { error: diagError } = await supabase
+        .from('mentoria_diagnosticos')
+        .upsert(basePayload, { onConflict: 'user_id' });
+      if (diagError) throw diagError;
+
+      // 2b. Tentar salvar colunas novas (só existem após a migration SQL)
+      try {
+        const newColPayload = {
+          user_id:                   props.userId,
+          study_days_of_week:        diagFormClean.study_days_of_week,
+          preferred_period:          diagFormClean.preferred_period,
+          preparation_level:         diagFormClean.preparation_level,
+          include_simulations:       diagFormClean.include_simulations,
+          simulation_frequency_days: diagFormClean.simulation_frequency_days,
+          review_frequency:          diagFormClean.review_frequency,
+          current_focus:             diagFormClean.current_focus,
+          schedule_notes:            diagFormClean.schedule_notes,
+        };
+        await supabase.from('mentoria_diagnosticos').update(newColPayload).eq('user_id', props.userId);
+      } catch (e) {
+        console.warn('[useApplyMentoria] colunas novas não salvas (execute o SQL de migração):', e);
+      }
+
+      // 3. Buscar matérias+temas do banco e gerar plano
+      let planSubjects: mentoriaService.PlanSubjectInput[] = props.subjects || [];
+      if (courseId && courseId !== 'undefined' && courseId !== '0') {
+        try {
+          const withTopics = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
+          if (withTopics.length > 0) planSubjects = withTopics;
+        } catch (e) {
+          console.warn('[useApplyMentoria] falha ao buscar temas:', e);
+        }
+      }
+
+      if (planSubjects.length > 0) {
+        const tasksCreated = await mentoriaService.generateStudyPlan({
+          userId:      props.userId,
+          subjects:    planSubjects,
+          diagnostico: diagFormClean,
+        });
+        return { tasksCreated };
+      }
+
+      console.warn('[useApplyMentoria] subjects vazio — courseId configurado?');
+      return { tasksCreated: 0 };
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['mentoria_status', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_diagnostico', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_estrategia', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_tasks', variables.userId] });
+    }
+  });
+}
+
+
+/** Hook para re-gerar o plano (re-diagnóstico): deleta pendentes futuros e re-cria */
+export function useReDiagnostico() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (props: {
+      userId: string;
+      diagForm: Partial<mentoriaService.MentoriaDiagnostico>;
+      subjects: mentoriaService.PlanSubjectInput[];
+    }) => {
+      // Extrair courseId ANTES de qualquer operação no banco
+      const { courseId: _courseId, ...diagFormClean } = props.diagForm as any;
+      const courseId = String(_courseId || '');
+
+      await mentoriaService.upsertDiagnostico({ ...diagFormClean, user_id: props.userId });
+      await mentoriaService.deletePendingFutureTasks(props.userId);
+
+      let planSubjects: mentoriaService.PlanSubjectInput[] = props.subjects || [];
+      if (courseId && courseId !== 'undefined' && courseId !== '0') {
+        try {
+          const withTopics = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
+          if (withTopics.length > 0) planSubjects = withTopics;
+        } catch (e) { console.warn('[useReDiagnostico] falha ao buscar temas:', e); }
+      }
+
+      const tasksCreated = await mentoriaService.generateStudyPlan({
+        userId: props.userId, subjects: planSubjects, diagnostico: diagFormClean,
+      });
+      return { tasksCreated };
+    },
+
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['mentoria_diagnostico', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_estrategia', variables.userId] });
+      qc.invalidateQueries({ queryKey: ['mentoria_tasks', variables.userId] });
     }
   });
 }

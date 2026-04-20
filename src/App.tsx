@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Questoes from "./pages/Questoes";
 import Flashcards from "./pages/Flashcards";
 import Resumos from "./pages/Resumos";
+import Estudos from "./pages/Estudos";
 import Perfil from "./pages/Perfil";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
@@ -32,10 +33,15 @@ import AdminPush from "./pages/admin/AdminPush";
 import AdminPlansPage from "./pages/admin/AdminPlansPage";
 import AdminMentoriaDashboard from "./pages/admin/AdminMentoriaDashboard";
 import AdminMentoriaAluno from "./pages/admin/AdminMentoriaAluno";
+import AdminPatrulhamento from "./pages/admin/AdminPatrulhamento";
+import AdminPatrulhamentoEditor from "./pages/admin/AdminPatrulhamentoEditor";
 
 import MentoriaDashboard from "./pages/mentoria/MentoriaDashboard";
 import MentoriaExecucao from "./pages/mentoria/MentoriaExecucao";
 import MentoriaDesempenho from "./pages/mentoria/MentoriaDesempenho";
+
+import PatrulhamentoDashboard from "./pages/patrulhamento/PatrulhamentoDashboard";
+import PatrulhamentoFase from "./pages/patrulhamento/PatrulhamentoFase";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +92,7 @@ const AppRoutes = () => {
           <Route path="/questoes" element={<ProtectedRoute><Questoes /></ProtectedRoute>} />
           <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
           <Route path="/resumos" element={<ProtectedRoute><Resumos /></ProtectedRoute>} />
+          <Route path="/estudos" element={<ProtectedRoute><Estudos /></ProtectedRoute>} />
           <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
           <Route path="/medalhas" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
           <Route path="/ranking" element={<ProtectedRoute><Ranking /></ProtectedRoute>} />
@@ -99,6 +106,9 @@ const AppRoutes = () => {
           <Route path="/mentoria" element={<ProtectedRoute><MentoriaDashboard /></ProtectedRoute>} />
           <Route path="/mentoria/execucao" element={<ProtectedRoute><MentoriaExecucao /></ProtectedRoute>} />
           <Route path="/mentoria/relatorios" element={<ProtectedRoute><MentoriaDesempenho /></ProtectedRoute>} />
+
+          <Route path="/patrulhamento" element={<ProtectedRoute><PatrulhamentoDashboard /></ProtectedRoute>} />
+          <Route path="/patrulhamento/fase/:id" element={<ProtectedRoute><PatrulhamentoFase /></ProtectedRoute>} />
 
           <Route path="/admin" element={<ProtectedRoute><AdminRoute><Admin /></AdminRoute></ProtectedRoute>} />
           
@@ -115,6 +125,9 @@ const AppRoutes = () => {
           <Route path="/painel/mentoria" element={<ProtectedRoute><AdminRoute><AdminMentoriaDashboard /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/mentoria/aluno/:id" element={<ProtectedRoute><AdminRoute><AdminMentoriaAluno /></AdminRoute></ProtectedRoute>} />
           
+          <Route path="/painel/patrulhamento" element={<ProtectedRoute><AdminRoute><AdminPatrulhamento /></AdminRoute></ProtectedRoute>} />
+          <Route path="/painel/patrulhamento/:courseId" element={<ProtectedRoute><AdminRoute><AdminPatrulhamentoEditor /></AdminRoute></ProtectedRoute>} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

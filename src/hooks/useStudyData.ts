@@ -152,6 +152,12 @@ export function useQuestions(courseId?: string | null) {
           if (q.option_c) options.push({ id: 'c', text: q.option_c });
           if (q.option_d) options.push({ id: 'd', text: q.option_d });
           if (q.option_e) options.push({ id: 'e', text: q.option_e });
+          
+          // Embaralhar opções localmente (Fisher-Yates) para evitar vício de resposta sem afetar o BD
+          for (let i = options.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [options[i], options[j]] = [options[j], options[i]];
+          }
         }
 
         const diff = { easy: 'fácil' as const, medium: 'média' as const, hard: 'difícil' as const }[q.difficulty] || 'média' as const;

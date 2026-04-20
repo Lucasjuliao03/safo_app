@@ -60,8 +60,8 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
       </div>
 
       <div className="space-y-2">
-        {question.options.map((opt) => {
-          const letter = opt.id.toUpperCase();
+        {question.options.map((opt, index) => {
+          const letter = question.format === 'true_false' ? opt.id.toUpperCase() : ['A', 'B', 'C', 'D', 'E'][index] || '?';
           const isSelected = selected === opt.id;
           const isRight = opt.id === question.correctOption;
           let optStyle = "bg-card border-border hover:border-primary/40";

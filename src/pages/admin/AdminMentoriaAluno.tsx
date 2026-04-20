@@ -320,6 +320,116 @@ export default function AdminMentoriaAluno() {
                 Salvar Diagnóstico Final
               </button>
             </div>
+
+            {/* ── Preferências do Onboarding (leitura) ────────────────────── */}
+            {diagnostico && diagnostico.study_days_of_week && (
+              <div className="mt-6 pt-5 border-t border-border space-y-4">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Settings className="h-3.5 w-3.5" /> Preferências do Onboarding (preenchido pelo aluno)
+                </h3>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-2">📅 Dias de Estudo</p>
+                    <div className="flex gap-1 flex-wrap">
+                      {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((d, idx) => (
+                        <span key={idx} className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px] font-bold",
+                          (diagnostico.study_days_of_week || []).includes(idx)
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground opacity-40"
+                        )}>{d}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-1">🕐 Período Preferido</p>
+                    <span className="font-bold capitalize">{
+                      { manha: '☀️ Manhã', tarde: '🌤 Tarde', noite: '🌙 Noite', variado: '🔀 Variado' }[diagnostico.preferred_period as string] || diagnostico.preferred_period
+                    }</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-1">🎯 Nível de Preparação</p>
+                    <span className="font-bold capitalize">{
+                      { iniciante: 'Iniciante', intermediario: 'Intermediário', avancado: 'Avançado', reta_final: '🔥 Reta Final' }[diagnostico.preparation_level as string] || diagnostico.preparation_level
+                    }</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-1">🧭 Foco Atual</p>
+                    <span className="font-bold">{
+                      { teoria: 'Base Teórica', questoes: 'Treino de Questões', revisao: 'Revisão Geral', reta_final: '🔥 Reta Final', misto: 'Misto' }[diagnostico.current_focus as string] || diagnostico.current_focus
+                    }</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-1">📚 Estilo de Estudo</p>
+                    <span className="font-bold">{
+                      { teoria: 'Mais Teoria', questoes: 'Mais Questões', misto: 'Misto Equilibrado', revisao: 'Revisão' }[diagnostico.method_style as string] || diagnostico.method_style
+                    }</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border">
+                    <p className="text-muted-foreground font-semibold mb-1">🔁 Frequência de Revisão</p>
+                    <span className="font-bold">{
+                      { diaria: 'Diária', dois_dias: 'A cada 2 dias', semanal: 'Semanal' }[diagnostico.review_frequency as string] || diagnostico.review_frequency
+                    }</span>
+                  </div>
+
+                  <div className="bg-muted/40 p-3 rounded-xl border border-border col-span-2">
+                    <p className="text-muted-foreground font-semibold mb-1">📝 Simulados</p>
+                    <span className="font-bold">
+                      {diagnostico.include_simulations
+                        ? `✅ Sim — a cada ${diagnostico.simulation_frequency_days} dias`
+                        : '❌ Não incluídos'}
+                    </span>
+                  </div>
+                </div>
+
+                {diagnostico.weak_subjects?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1.5">🔴 Matérias de Maior Dificuldade</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {diagnostico.weak_subjects.map((s: string, i: number) => (
+                        <span key={i} className="px-2 py-1 rounded-full bg-destructive/10 text-destructive border border-destructive/20 text-xs font-semibold">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {diagnostico.strong_subjects?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1.5">🟢 Matérias de Maior Domínio</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {diagnostico.strong_subjects.map((s: string, i: number) => (
+                        <span key={i} className="px-2 py-1 rounded-full bg-success/10 text-success border border-success/20 text-xs font-semibold">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {diagnostico.schedule_notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">📝 Contexto da Rotina (declarado)</p>
+                    <p className="text-sm text-foreground/80 italic bg-muted/40 p-3 rounded-xl border border-border">"{diagnostico.schedule_notes}"</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 pt-2 border-t border-border text-xs text-muted-foreground">
+                  {diagnostico.plan_generated ? (
+                    <span className="flex items-center gap-1 text-success font-semibold">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Plano gerado automaticamente — v{diagnostico.plan_version}
+                      {diagnostico.plan_generated_at && ` · ${new Date(diagnostico.plan_generated_at).toLocaleDateString('pt-BR')}`}
+                    </span>
+                  ) : (
+                    <span className="text-warning font-semibold">⚠️ Plano ainda não foi gerado automaticamente.</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

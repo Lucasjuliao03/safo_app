@@ -1,0 +1,338 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { AppLayout } from '@/components/AppLayout';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate, useParams } from 'react-router-dom';
+import { usePatrulhamentoTrilha, useCompletarFase } from '@/hooks/usePatrulhamento';
+import { useSummaries, useQuestions, useFlashcards } from '@/hooks/useStudyData';
+import { ChevronLeft, Target, Award, BrainCircuit, Play, CheckCircle, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+export default function PatrulhamentoFase() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const courseId = user?.courseId ? Number(user.courseId) : null;
+  
+  const { data: campanhas, isLoading: loadingCartography } = usePatrulhamentoTrilha(courseId);
+  const { data: summaries = [], isLoading: loadingSummaries } = useSummaries(String(courseId));
+  const { data: allQuestions = [], isLoading: loadingQuestions } = useQuestions(String(courseId));
+  const { data: flashcards = [], isLoading: loadingFlashcards } = useFlashcards(String(courseId));
+
+  const completarMutation = useCompletarFase();
+  
+  const [fase, setFase] = useState<any>(null);
+  const [nextFaseId, setNextFaseId] = useState<number | null>(null);
+
+  // Estados de Execução (Questões e Flashcards)
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [acertos, setAcertos] = useState(0);
+  const [answeredState, setAnsweredState] = useState<{ selectedOptionId?: string, isCorrect?: boolean } | null>(null);
+  const [itemsList, setItemsList] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!campanhas || !id) return;
+    const allFases: any[] = [];
+    campanhas.forEach(c => c.setores?.forEach(s => s.fases?.forEach(f => allFases.push(f))));
+    allFases.sort((a,b) => a.ordem_global - b.ordem_global);
+
+    const fId = Number(id);
+    const index = allFases.findIndex(f => f.id === fId);
+    
+    if (index !== -1) {
+       setFase(allFases[index]);
+       setNextFaseId(allFases[index + 1]?.id || null);
+    }
+  }, [campanhas, id]);
+
+  // Carregar conteúdo real baseado no payload_json
+  useEffect(() => {
+    if (!fase) return;
+    const topicId = fase.payload_json?.topic_id;
+    const mixTopics = fase.payload_json?.mix_topic_ids;
+
+    if (fase.tipo_fase === 'questoes' || fase.tipo_fase === 'checkpoint') {
+       let filtered: any[] = [];
+       const specificIds = fase.payload_json?.question_ids;
+
+       if (specificIds && Array.isArray(specificIds) && specificIds.length > 0) {
+          // Engessado pelo Admin: Puxa exatamente as questões pedidas
+          filtered = allQuestions.filter(q => specificIds.includes(Number(q.id)));
+          // Opcional: ordenar as questões na mesma ordem do array engessado
+          filtered.sort((a,b) => specificIds.indexOf(Number(a.id)) - specificIds.indexOf(Number(b.id)));
+       } else if (mixTopics && mixTopics.length > 0) {
+          filtered = allQuestions.filter(q => q.topicId && mixTopics.includes(Number(q.topicId)));
+          filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens);
+       } else if (topicId) {
+          filtered = allQuestions.filter(q => q.topicId === String(topicId));
+          filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens);
+       }
+       
+       setItemsList(filtered);
+       setCurrentIndex(0);
+       setAcertos(0);
+       setAnsweredState(null);
+    }
+
+    if (fase.tipo_fase === 'flashcards') {
+        let filtered: any[] = [];
+        const specificIds = fase.payload_json?.question_ids; // Usando o mesmo field para praticidade no JSON
+
+        if (specificIds && Array.isArray(specificIds) && specificIds.length > 0) {
+            filtered = flashcards.filter(f => specificIds.includes(Number(f.id)));
+        } else {
+            filtered = topicId ? flashcards.filter(f => f.topicId === String(topicId)) : flashcards;
+            filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens || 10);
+        }
+        
+        setItemsList(filtered);
+        setCurrentIndex(0);
+    }
+  }, [fase, allQuestions, flashcards]);
+
+  const isLoading = loadingCartography || loadingSummaries || loadingQuestions || loadingFlashcards;
+
+  if (isLoading) return <div className="p-8 text-center mt-20 animate-pulse text-muted-foreground font-bold tracking-widest text-xs uppercase">Carregando Instrução...</div>;
+  if (!fase) return <div className="p-8 text-center text-destructive">Fase não encontrada ou acesso negado.</div>;
+
+  const summaryMatch = fase.tipo_fase === 'teoria' 
+     ? summaries.find(s => s.topicId === String(fase.payload_json?.topic_id)) 
+     : null;
+
+  const currentInteractionItem = itemsList[currentIndex];
+
+  const handleCompleteSuccess = async () => {
+    try {
+       await completarMutation.mutateAsync({
+           userId: user!.id,
+           courseId: courseId!,
+           faseConcluidaId: fase.id,
+           nextFaseId: nextFaseId,
+           xpGanho: fase.xp_reward || 0
+       });
+       toast.success(`Operação Concluída: ${fase.titulo}! +${fase.xp_reward} XP`);
+       navigate('/patrulhamento');
+    } catch (e: any) {
+       toast.error("Erro ao salvar progresso: " + e.message);
+    }
+  };
+
+  const handleFinishTeoria = () => {
+     handleCompleteSuccess();
+  };
+
+  const handleAnswerQuestion = (optionId: string) => {
+      if (answeredState) return; // already answered
+      const isCorrect = optionId === currentInteractionItem.correctOption;
+      setAnsweredState({ selectedOptionId: optionId, isCorrect });
+      if (isCorrect) setAcertos(prev => prev + 1);
+  };
+
+  const handleNextQuestion = () => {
+      if (currentIndex + 1 < itemsList.length) {
+          setCurrentIndex(prev => prev + 1);
+          setAnsweredState(null);
+      } else {
+          // Finish Logic
+          if (acertos >= fase.req_acertos) {
+              handleCompleteSuccess();
+          } else {
+              toast.error(`Falha na Operação. Você acertou ${acertos} de ${itemsList.length}. Necessário: ${fase.req_acertos}.`);
+              navigate('/patrulhamento');
+          }
+      }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-background z-50 flex flex-col items-center animate-fade-in overflow-hidden">
+      {/* Header Imersivo */}
+      <div className="w-full bg-card border-b border-border p-4 flex items-center justify-between shrink-0 shadow-sm z-10">
+         <button onClick={() => navigate('/patrulhamento')} className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:bg-border transition active:scale-95">
+            <ChevronLeft className="w-5 h-5" />
+         </button>
+         <div className="flex flex-col items-center">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-3 py-1 rounded-full border border-border">
+               {fase.tipo_fase}
+            </span>
+            <div className="text-sm font-black mt-1 text-foreground">{fase.titulo}</div>
+         </div>
+         <div className="w-10 h-10"></div>
+      </div>
+
+      <div className="w-full flex-1 flex flex-col overflow-hidden max-w-lg mx-auto bg-background">
+         
+         <ScrollArea className="flex-1 p-4">
+             {/* FASE: TEORIA */}
+             {fase.tipo_fase === 'teoria' && (
+                <div className="space-y-6 pb-20">
+                   {!summaryMatch ? (
+                      <div className="p-6 bg-muted/30 border border-border rounded-xl text-center">
+                         <BrainCircuit className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+                         <p className="text-muted-foreground text-sm">Resumo não encontrado para este tema no banco de dados.</p>
+                      </div>
+                   ) : (
+                      <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-relaxed prose-headings:font-bold prose-a:text-primary">
+                         {summaryMatch.contentHtml ? (
+                             <div dangerouslySetInnerHTML={{ __html: summaryMatch.contentHtml }} />
+                         ) : summaryMatch.contentMarkdown ? (
+                             <div className="whitespace-pre-wrap">{summaryMatch.contentMarkdown}</div>
+                         ) : (
+                             <p>Conteúdo vazio.</p>
+                         )}
+                      </div>
+                   )}
+                </div>
+             )}
+
+             {/* FASE: QUESTOES OU CHECKPOINT */}
+             {(fase.tipo_fase === 'questoes' || fase.tipo_fase === 'checkpoint') && (
+                <div className="space-y-6 pb-24">
+                   {itemsList.length === 0 ? (
+                      <div className="p-6 bg-muted/30 border border-border rounded-xl text-center">
+                         <Target className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+                         <p className="text-muted-foreground text-sm">Nenhuma questão encontrada para os temas desta fase no banco de dados.</p>
+                      </div>
+                   ) : (
+                      currentInteractionItem && (
+                         <div className="space-y-6">
+                            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
+                               <span>Alvo {currentIndex + 1} / {itemsList.length}</span>
+                               <span className="text-warning">Requisito: {fase.req_acertos} acertos</span>
+                            </div>
+
+                            <p className="text-lg leading-relaxed text-foreground font-medium mb-6">
+                               {currentInteractionItem.statement}
+                            </p>
+
+                            <div className="space-y-3">
+                               {currentInteractionItem.options.map((opt: any, index: number) => {
+                                  const isSelected = answeredState?.selectedOptionId === opt.id;
+                                  const isCorrectOption = opt.id === currentInteractionItem.correctOption;
+                                  let btnClass = "bg-card border-border hover:border-primary/50 text-foreground";
+                                  
+                                  if (answeredState) {
+                                      if (isCorrectOption) btnClass = "bg-success/20 border-success text-success-foreground";
+                                      else if (isSelected) btnClass = "bg-destructive/20 border-destructive text-destructive-foreground";
+                                      else btnClass = "bg-muted border-border opacity-50";
+                                  }
+
+                                  return (
+                                     <button
+                                        key={opt.id}
+                                        disabled={!!answeredState}
+                                        onClick={() => handleAnswerQuestion(opt.id)}
+                                        className={cn(
+                                           "w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-3",
+                                           btnClass
+                                        )}
+                                     >
+                                        <div className="w-8 h-8 rounded-full border-2 border-inherit flex items-center justify-center font-bold text-xs shrink-0">
+                                           {currentInteractionItem.format === 'true_false' ? opt.id.toUpperCase() : ['A', 'B', 'C', 'D', 'E'][index]}
+                                        </div>
+                                        <span className="text-sm font-medium">{opt.text}</span>
+                                     </button>
+                                  );
+                               })}
+                            </div>
+
+                            {answeredState && (
+                               <div className={cn("p-4 rounded-xl border", answeredState.isCorrect ? "bg-success/10 border-success/30 text-success-foreground" : "bg-destructive/10 border-destructive/30 text-destructive-foreground")}>
+                                  <h4 className="font-bold mb-1">{answeredState.isCorrect ? "Tiro Certeiro!" : "Alvo Errado"}</h4>
+                                  <p className="text-sm opacity-90">{currentInteractionItem.explanation || "Sem comentários do instrutor."}</p>
+                               </div>
+                            )}
+                         </div>
+                      )
+                   )}
+                </div>
+             )}
+
+             {/* FASE: FLASHCARDS (simplificado) */}
+             {fase.tipo_fase === 'flashcards' && (
+                 <div className="space-y-6 pb-24 h-full flex flex-col justify-center">
+                    {itemsList.length === 0 ? (
+                       <p className="text-center text-muted-foreground">Nenhum flashcard disponível.</p>
+                    ) : (
+                       currentInteractionItem && (
+                          <div className="flex-1 flex flex-col justify-center items-center h-64 p-6 bg-card border-2 border-border shadow-xl rounded-3xl text-center">
+                             {!answeredState ? (
+                                <>
+                                  <h3 className="text-xs uppercase text-muted-foreground font-bold tracking-widest mb-4">Frente do Card {currentIndex + 1}/{itemsList.length}</h3>
+                                  <p className="text-lg font-bold text-foreground">{currentInteractionItem.front}</p>
+                                  <button onClick={() => setAnsweredState({})} className="mt-8 px-6 py-2 bg-primary/10 text-primary font-bold rounded-full text-sm">Ver Verso</button>
+                                </>
+                             ) : (
+                                <>
+                                  <h3 className="text-xs uppercase text-success font-bold tracking-widest mb-4">Verso do Card</h3>
+                                  <p className="text-lg font-bold text-foreground">{currentInteractionItem.back}</p>
+                                </>
+                             )}
+                          </div>
+                       )
+                    )}
+                 </div>
+             )}
+
+         </ScrollArea>
+      </div>
+
+      {/* FOOTER FIXO DE AÇÃO */}
+      <div className="w-full bg-background/80 backdrop-blur-md p-4 border-t border-border z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] shrink-0">
+          <div className="max-w-lg mx-auto">
+             {fase.tipo_fase === 'teoria' && (
+                <button 
+                   onClick={handleFinishTeoria}
+                   disabled={completarMutation.isPending}
+                   className="w-full bg-primary text-primary-foreground font-black text-lg py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-primary/20"
+                >
+                   {completarMutation.isPending ? 'Validando...' : 'COMPREENDI A INSTRUÇÃO'}
+                </button>
+             )}
+
+             {(fase.tipo_fase === 'questoes' || fase.tipo_fase === 'checkpoint') && (
+                <>
+                   {itemsList.length > 0 ? (
+                      <button 
+                         onClick={handleNextQuestion}
+                         disabled={!answeredState}
+                         className={cn(
+                             "w-full font-black text-lg py-4 rounded-2xl flex items-center justify-center gap-2 transition-transform shadow-lg",
+                             answeredState ? "bg-primary text-primary-foreground active:scale-[0.98] shadow-primary/20" : "bg-muted text-muted-foreground"
+                         )}
+                      >
+                         {currentIndex + 1 < itemsList.length ? 'PRÓXIMO ALVO' : 'FINALIZAR MISSÃO'}
+                      </button>
+                   ) : (
+                      <button onClick={() => navigate('/patrulhamento')} className="w-full bg-muted text-foreground py-4 rounded-xl font-bold">Voltar</button>
+                   )}
+                </>
+             )}
+             
+             {fase.tipo_fase === 'flashcards' && (
+                 <>
+                   {itemsList.length > 0 ? (
+                      <button 
+                         onClick={handleNextQuestion}
+                         disabled={!answeredState}
+                         className={cn(
+                             "w-full font-black text-lg py-4 rounded-2xl flex items-center justify-center gap-2 transition-transform shadow-lg",
+                             answeredState ? "bg-primary text-primary-foreground active:scale-[0.98] shadow-primary/20" : "bg-muted text-muted-foreground opacity-0"
+                         )}
+                      >
+                         {currentIndex + 1 < itemsList.length ? 'PRÓXIMO CARD' : 'FINALIZAR REVISÃO'}
+                      </button>
+                   ) : (
+                      <button onClick={() => navigate('/patrulhamento')} className="w-full bg-muted text-foreground py-4 rounded-xl font-bold">Voltar</button>
+                   )}
+                </>
+             )}
+
+             <p className="text-center text-[10px] font-bold text-muted-foreground uppercase mt-3 flex items-center justify-center gap-1">
+                <Award className="w-3 h-3" /> Recompensa: {fase.xp_reward} XP
+             </p>
+          </div>
+      </div>
+    </div>
+  );
+}

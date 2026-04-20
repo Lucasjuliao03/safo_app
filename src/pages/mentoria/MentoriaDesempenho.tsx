@@ -44,47 +44,69 @@ export default function MentoriaDesempenho() {
     const tasks = allTasks as any[];
 
     // --- Task Metrics ---
-    const totalTasks = tasks.length;
+    const totalTasks     = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
-    const delayedTasks = tasks.filter(t => t.status === 'delayed' || t.status === 'skipped').length;
-    const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+    const delayedTasks   = tasks.filter(t => t.status === 'delayed' || t.status === 'skipped').length;
+    const pendingTasks   = tasks.filter(t => t.status === 'pending').length;
     const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-    // --- Days with tasks ---
+    // --- Days ---
     const daysWithTasks = new Set(tasks.map(t => t.planned_date)).size;
-    const daysDone = new Set(
-      tasks.filter(t => t.status === 'completed').map(t => t.planned_date)
-    ).size;
+    const daysDone      = new Set(tasks.filter(t => t.status === 'completed').map(t => t.planned_date)).size;
 
-    // --- Time metrics ---
-    const totalPlannedMinutes = tasks.reduce((acc: number, t: any) => acc + (t.planned_minutes || 0), 0);
-    const totalActualMinutes = tasks.filter((t: any) => t.status === 'completed')
-      .reduce((acc: number, t: any) => acc + (t.actual_minutes || t.planned_minutes || 0), 0);
+    // --- Time ---
+    const totalPlannedMinutes = tasks.reduce((a: number, t: any) => a + (t.planned_minutes || 0), 0);
+    const totalActualMinutes  = tasks.filter((t: any) => t.status === 'completed')
+      .reduce((a: number, t: any) => a + (t.actual_minutes || t.planned_minutes || 0), 0);
 
-    // --- Questions from mentoria check-ins ---
-    const totalMentoriaQuestions = tasks.filter((t: any) => t.status === 'completed' && t.actual_questions)
-      .reduce((acc: number, t: any) => acc + (t.actual_questions || 0), 0);
+    // --- Questões do check-in ---
+    const totalMentoriaQuestions = tasks
+      .filter((t: any) => t.status === 'completed' && t.actual_questions)
+      .reduce((a: number, t: any) => a + (t.actual_questions || 0), 0);
 
-    // --- By Subject (agrupar por subject_id, use subjects.name) ---
-    const subjectMap: Record<string, { name: string, minutes: number, tasks: number, completed: number, questions: number }> = {};
+    // --- Por Matéria (com breakdown de tipo de tarefa) ---
+    const subjectMap: Record<string, {
+      name: string;
+      totalMinutes: number;
+      completedMinutes: number;
+      totalTasks: number;
+      completedTasks: number;
+      questions: number;
+      byType: Record<string, { total: number; done: number }>;
+    }> = {};
+
     tasks.forEach((t: any) => {
-      const key = t.subject_id || 'sem_materia';
-      const name = t.subjects?.name || t.title?.split(':')[0]?.trim() || 'Geral';
-      if (!subjectMap[key]) subjectMap[key] = { name, minutes: 0, tasks: 0, completed: 0, questions: 0 };
-      subjectMap[key].tasks++;
+      const key  = t.subject_id || 'sem_materia';
+      const name = t.subjects?.name || 'Instrução Geral';
+      const type = t.task_type || 'theory';
+
+      if (!subjectMap[key]) {
+        subjectMap[key] = { name, totalMinutes: 0, completedMinutes: 0, totalTasks: 0, completedTasks: 0, questions: 0, byType: {} };
+      }
+      if (!subjectMap[key].byType[type]) {
+        subjectMap[key].byType[type] = { total: 0, done: 0 };
+      }
+
+      subjectMap[key].totalTasks++;
+      subjectMap[key].totalMinutes += t.planned_minutes || 0;
+      subjectMap[key].byType[type].total++;
+
       if (t.status === 'completed') {
-        subjectMap[key].completed++;
-        subjectMap[key].minutes += t.actual_minutes || t.planned_minutes || 0;
+        subjectMap[key].completedTasks++;
+        subjectMap[key].completedMinutes += t.actual_minutes || t.planned_minutes || 0;
         subjectMap[key].questions += t.actual_questions || 0;
+        subjectMap[key].byType[type].done++;
       }
     });
 
-    const subjectList = Object.values(subjectMap).sort((a, b) => b.minutes - a.minutes);
+    const subjectList = Object.values(subjectMap)
+      .filter(s => s.name !== 'Instrução Geral')
+      .sort((a, b) => b.completedMinutes - a.completedMinutes);
 
-    // --- Question Stats from the platform ---
-    const totalQuestRespondidas = (questionStats as any[]).reduce((acc, s) => acc + (s.total_attempts || 0), 0);
-    const totalQuestCorretas = (questionStats as any[]).reduce((acc, s) => acc + (s.total_correct || 0), 0);
-    const precisaoGlobal = totalQuestRespondidas > 0 ? (totalQuestCorretas / totalQuestRespondidas) * 100 : 0;
+    // --- Questões da plataforma ---
+    const totalQuestRespondidas = (questionStats as any[]).reduce((a, s) => a + (s.total_attempts   || 0), 0);
+    const totalQuestCorretas    = (questionStats as any[]).reduce((a, s) => a + (s.total_correct    || 0), 0);
+    const precisaoGlobal        = totalQuestRespondidas > 0 ? (totalQuestCorretas / totalQuestRespondidas) * 100 : 0;
 
     // --- Insights ---
     const insights: string[] = [];
@@ -98,9 +120,11 @@ export default function MentoriaDesempenho() {
     return {
       totalTasks, completedTasks, delayedTasks, pendingTasks, completionRate,
       daysWithTasks, daysDone, totalPlannedMinutes, totalActualMinutes,
-      totalMentoriaQuestions, subjectList, totalQuestRespondidas, totalQuestCorretas, precisaoGlobal, insights
+      totalMentoriaQuestions, subjectList,
+      totalQuestRespondidas, totalQuestCorretas, precisaoGlobal, insights,
     };
   }, [allTasks, questionStats]);
+
 
   if (loadingStatus || loadingTasks || loadingStats) {
     return <AppLayout><div className="flex justify-center p-8 text-muted-foreground animate-pulse">Compilando seu desempenho...</div></AppLayout>;
@@ -212,30 +236,68 @@ export default function MentoriaDesempenho() {
           </div>
         </section>
 
-        {/* --- Por Matéria --- */}
+        {/* --- Por Matéria (detalhado) --- */}
         {metrics.subjectList.length > 0 && (
           <section className="bg-card border border-border rounded-3xl p-5 space-y-4">
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <BookOpen className="h-4 w-4 text-primary" />
               <h2 className="font-bold text-sm">Por Matéria</h2>
+              <span className="ml-auto text-[10px] text-muted-foreground">{metrics.subjectList.length} matérias</span>
             </div>
 
-            <div className="space-y-4">
-              {metrics.subjectList.slice(0, 10).map((sub, i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-foreground truncate max-w-[60%]">{sub.name}</span>
-                    <span className="text-muted-foreground">{fmtH(sub.minutes)} · {sub.completed}/{sub.tasks} tarefas</span>
+            <div className="space-y-5">
+              {metrics.subjectList.slice(0, 12).map((sub, i) => {
+                const completionPct = sub.totalTasks > 0 ? Math.round((sub.completedTasks / sub.totalTasks) * 100) : 0;
+                const typeLabels: Record<string, string> = {
+                  theory: 'Teoria', questions: 'Questões', review: 'Revisão', reading: 'Leitura', simulation: 'Simulado'
+                };
+                const typeColors: Record<string, string> = {
+                  theory: 'bg-blue-500/20 text-blue-600', questions: 'bg-primary/15 text-primary',
+                  review: 'bg-warning/20 text-warning', reading: 'bg-success/20 text-success',
+                  simulation: 'bg-destructive/15 text-destructive',
+                };
+
+                return (
+                  <div key={i} className="space-y-2">
+                    {/* Matéria + tempo */}
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-foreground truncate">{sub.name}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {sub.completedTasks}/{sub.totalTasks} tarefas concluídas
+                          {sub.questions > 0 && ` · ${sub.questions} questões`}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-black text-foreground">{fmtH(sub.completedMinutes)}</p>
+                        <p className="text-[10px] text-muted-foreground">de {fmtH(sub.totalMinutes)}</p>
+                      </div>
+                    </div>
+
+                    {/* Barra de progresso */}
+                    <ProgressBar value={sub.completedTasks} max={sub.totalTasks} color={
+                      completionPct >= 80 ? 'bg-success' :
+                      completionPct >= 40 ? 'bg-primary' : 'bg-warning'
+                    } />
+
+                    {/* Breakdown de tipos */}
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {Object.entries(sub.byType).map(([type, counts]) => (
+                        <span
+                          key={type}
+                          className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", typeColors[type] || 'bg-muted text-muted-foreground')}
+                        >
+                          {typeLabels[type] || type}: {counts.done}/{counts.total}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <ProgressBar value={sub.completed} max={sub.tasks} color="bg-primary/70" />
-                  {sub.questions > 0 && (
-                    <p className="text-[10px] text-muted-foreground">{sub.questions} questões resolvidas no ciclo</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
+
 
         {/* --- Insights --- */}
         {metrics.insights.length > 0 && (
