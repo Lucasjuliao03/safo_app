@@ -105,9 +105,9 @@ export function useTopics(courseId?: string | null) {
 /* ═══════════════════════════════════════════════════════ */
 /*  QUESTIONS                                             */
 /* ═══════════════════════════════════════════════════════ */
-export function useQuestions(courseId?: string | null) {
+export function useQuestions(courseId?: string | null, activeLawIds?: number[] | null) {
   return useQuery({
-    queryKey: ['questions', courseId],
+    queryKey: ['questions', courseId, activeLawIds],
     queryFn: async () => {
       // Buscar TODAS as questões com paginação
       let allQuestions: any[] = [];
@@ -119,7 +119,8 @@ export function useQuestions(courseId?: string | null) {
           .from('questions')
           .select(`id, subject_id, topic_id, subtopic_id, question_type, difficulty, source_year, statement,
                    option_a, option_b, option_c, option_d, option_e, format,
-                   correct_option, explanation, board_id, is_active, status, exam_boards(name), topics(name, target_course_ids)`)
+                   correct_option, explanation, board_id, is_active, status, law_reference_id,
+                   exam_boards(name), topics(name, target_course_ids), law_references(name, short_name)`)
           .range(page * pageSize, (page + 1) * pageSize - 1);
         
         if (error) throw error;
@@ -141,6 +142,15 @@ export function useQuestions(courseId?: string | null) {
           return !tc || tc.length === 0 || tc.includes(cid);
         });
       }
+
+      // Filtro por leis ativas do edital: se activeLawIds definido, mostra APENAS
+      // questões vinculadas a uma das leis permitidas OU questões sem lei vinculada (conteúdo geral)
+      if (activeLawIds && activeLawIds.length > 0) {
+        filtered = filtered.filter((row: any) =>
+          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
+        );
+      }
+
       return filtered.map((q: any): Question => {
         const options = [];
         if (q.format === 'true_false') {
@@ -166,6 +176,8 @@ export function useQuestions(courseId?: string | null) {
           id: String(q.id),
           subjectId: String(q.subject_id),
           topicId: q.topic_id ? String(q.topic_id) : null,
+          lawReferenceId: q.law_reference_id ? Number(q.law_reference_id) : null,
+          lawReferenceName: q.law_references?.short_name || q.law_references?.name || null,
           topic: q.topics?.name || "Geral",
           subtopic: "",
           difficulty: diff,
@@ -187,14 +199,14 @@ export function useQuestions(courseId?: string | null) {
 /* ═══════════════════════════════════════════════════════ */
 /*  FLASHCARDS                                            */
 /* ═══════════════════════════════════════════════════════ */
-export function useFlashcards(courseId?: string | null) {
+export function useFlashcards(courseId?: string | null, activeLawIds?: number[] | null) {
   return useQuery({
-    queryKey: ['flashcards', courseId],
+    queryKey: ['flashcards', courseId, activeLawIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('flashcards')
-        .select(`id, subject_id, topic_id, front_text, back_text, difficulty,
-                 topics(name, target_course_ids)`)
+        .select(`id, subject_id, topic_id, front_text, back_text, difficulty, law_reference_id,
+                 topics(name, target_course_ids), law_references(name, short_name)`)
         .eq('is_active', true)
         .eq('status', 'published');
       if (error) throw error;
@@ -203,10 +215,17 @@ export function useFlashcards(courseId?: string | null) {
         const cid = Number(courseId);
         filtered = filtered.filter(row => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
       }
+      if (activeLawIds && activeLawIds.length > 0) {
+        filtered = filtered.filter((row: any) =>
+          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
+        );
+      }
       return filtered.map((f: any): Flashcard => ({
         id: String(f.id),
         subjectId: String(f.subject_id),
         topicId: f.topic_id ? String(f.topic_id) : null,
+        lawReferenceId: f.law_reference_id ? Number(f.law_reference_id) : null,
+        lawReferenceName: (f as any).law_references?.short_name || (f as any).law_references?.name || null,
         topic: f.topics?.name || "Geral",
         front: f.front_text,
         back: f.back_text,
@@ -230,14 +249,14 @@ export interface SummaryItem {
   sortOrder: number;
 }
 
-export function useSummaries(courseId?: string | null) {
+export function useSummaries(courseId?: string | null, activeLawIds?: number[] | null) {
   return useQuery({
-    queryKey: ['summaries', courseId],
+    queryKey: ['summaries', courseId, activeLawIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('summaries')
-        .select(`id, subject_id, topic_id, subtopic_id, title, format, content_html, content_markdown, sort_order,
-                 topics(name, target_course_ids), subtopics(name)`)
+        .select(`id, subject_id, topic_id, subtopic_id, title, format, content_html, content_markdown, sort_order, law_reference_id,
+                 topics(name, target_course_ids), subtopics(name), law_references(name, short_name)`)
         .eq('is_active', true)
         .eq('status', 'published')
         .order('sort_order');
@@ -247,11 +266,18 @@ export function useSummaries(courseId?: string | null) {
         const cid = Number(courseId);
         filtered = filtered.filter((row: any) => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
       }
+      if (activeLawIds && activeLawIds.length > 0) {
+        filtered = filtered.filter((row: any) =>
+          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
+        );
+      }
 
       return filtered.map((s: any): SummaryItem => ({
         id: String(s.id),
         subjectId: String(s.subject_id),
         topicId: s.topic_id ? String(s.topic_id) : null,
+        lawReferenceId: s.law_reference_id ? Number(s.law_reference_id) : null,
+        lawReferenceName: s.law_references?.short_name || s.law_references?.name || null,
         title: s.title,
         contentHtml: s.content_html,
         contentMarkdown: s.content_markdown,
@@ -289,6 +315,55 @@ export function useCourses() {
     staleTime: 1000 * 60 * 30,
   });
 }
+
+/* ═══════════════════════════════════════════════════════ */
+/*  FILTRO DE LEIS ATIVAS POR CURSO (via edital + normas) */
+/* ═══════════════════════════════════════════════════════ */
+/**
+ * Retorna os IDs dos law_references ativos para o edital mais recente do curso.
+ * - null  → nenhuma norma vinculada ao edital, sem filtro restritivo (exibe tudo)
+ * - []    → edital sem leis, aplica filtro vazio (nada seria exibido, situação inesperada)
+ * - [1,2] → IDs das leis permitidas para o curso
+ */
+export function useActiveLawIdsForCourse(courseId?: number | null, editalId?: number | null) {
+  return useQuery({
+    queryKey: ['active_law_ids', courseId, editalId],
+    queryFn: async () => {
+      let targetEdictId = editalId;
+
+      // Se não tem editalId, busca o mais recente do curso
+      if (!targetEdictId && courseId) {
+        const { data: edicts, error: edictsErr } = await supabase
+          .from('edicts')
+          .select('id')
+          .eq('course_id', courseId)
+          .eq('is_active', true)
+          .order('year', { ascending: false })
+          .limit(1);
+
+        if (!edictsErr && edicts && edicts.length > 0) {
+          targetEdictId = edicts[0].id;
+        }
+      }
+
+      if (!targetEdictId) return null; // Sem edital → sem filtro restritivo
+
+      // Busca as leis vinculadas a esse edital
+      const { data: links, error: linksErr } = await supabase
+        .from('edital_law_references')
+        .select('law_reference_id')
+        .eq('edital_id', targetEdictId);
+
+      if (linksErr) throw linksErr;
+      if (!links || links.length === 0) return null; // Edital sem leis → sem filtro restritivo
+
+      return links.map((l: any) => Number(l.law_reference_id));
+    },
+    staleTime: 1000 * 60 * 15,
+    enabled: courseId !== undefined && courseId !== null,
+  });
+}
+
 
 /* ═══════════════════════════════════════════════════════ */
 /*  MUTATIONS — Record answers & reviews                  */

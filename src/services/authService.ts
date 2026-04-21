@@ -31,6 +31,7 @@ export async function fetchProfile(userId: string): Promise<User | null> {
     isApproved: data.is_active,
     createdAt: data.created_at,
     courseId: courseId,
+    editalId: data.edital_id,
     activeUntil: data.active_until,
     passwordHash: "",
   };

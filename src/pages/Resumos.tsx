@@ -4,7 +4,7 @@ import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon, Folder } fr
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSubjects, useSummaries, useTopics, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
+import { useSubjects, useSummaries, useTopics, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { canAccessSummaries, isUserActive } from "@/services/accessService";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
@@ -16,9 +16,19 @@ export default function ResumosPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const courseId = user?.courseId ? String(user.courseId) : null;
+  const courseIdNum = user?.courseId ? Number(user.courseId) : null;
+  const editalIdNum = user?.editalId ? Number(user.editalId) : null;
+  const { data: activeLawIds } = useActiveLawIdsForCourse(
+    isAdmin ? null : courseIdNum,
+    isAdmin ? null : editalIdNum
+  );
+
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
-  const { data: summaries = [], isLoading: loadingSum } = useSummaries(isAdmin ? undefined : courseId);
+  const { data: summaries = [], isLoading: loadingSum } = useSummaries(
+    isAdmin ? undefined : courseId,
+    isAdmin ? null : activeLawIds
+  );
   const qc = useQueryClient();
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -212,6 +222,11 @@ export default function ResumosPage() {
               })()}
               {subject?.name ?? "Geral"}
             </Badge>
+            {summary.lawReferenceName && (
+              <Badge variant="outline" className="text-xs border-violet-500/30 text-violet-400 bg-violet-500/5">
+                ⚖️ {summary.lawReferenceName}
+              </Badge>
+            )}
           </div>
 
           <h1 className="text-xl font-bold text-foreground">{summary.title}</h1>
@@ -263,8 +278,13 @@ export default function ResumosPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{summary.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 font-medium">
-                        {isViewed ? `Lido ${viewedSummaryCounts.get(summary.id) || 1} ${viewedSummaryCounts.get(summary.id) === 1 ? 'vez' : 'vezes'}` : 'Não lido'}
+                        {isViewed ? "Visualizado" : "Novo Resumo"}
                       </p>
+                      {summary.lawReferenceName && (
+                        <p className="text-[10px] text-violet-400 mt-1 flex items-center gap-1">
+                          ⚖️ {summary.lawReferenceName}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {isViewed && (

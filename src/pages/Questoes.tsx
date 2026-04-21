@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessContent, isUserActive } from "@/services/accessService";
-import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
+import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { useMemo } from "react";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 
@@ -53,6 +53,11 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
         <Badge variant="outline" className="text-xs border-border text-muted-foreground">
           {question.board} · {question.year}
         </Badge>
+        {question.lawReferenceName && (
+          <Badge variant="outline" className="text-xs border-violet-500/30 text-violet-400 bg-violet-500/5">
+            ⚖️ {question.lawReferenceName}
+          </Badge>
+        )}
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4">
@@ -121,9 +126,22 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
 export default function QuestoesPage() {
   const { user, isApproved, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
+  const courseIdNum = user?.courseId ? Number(user.courseId) : null;
+  const editalIdNum = user?.editalId ? Number(user.editalId) : null;
+  
+  // Busca as leis ativas do edital do aluno (ou o mais recente do curso)
+  const { data: activeLawIds } = useActiveLawIdsForCourse(
+    isAdmin ? null : courseIdNum,
+    isAdmin ? null : editalIdNum
+  );
+  
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
-  const { data: questions = [], isLoading: loadingQ } = useQuestions(isAdmin ? undefined : courseId);
+  // Passa activeLawIds para filtrar questoes do edital do usuario
+  const { data: questions = [], isLoading: loadingQ } = useQuestions(
+    isAdmin ? undefined : courseId,
+    isAdmin ? null : activeLawIds
+  );
   const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [], isLoading: loadingStats } = useUserQuestionStats(user?.id);
   const recordAnswer = useRecordAnswer();

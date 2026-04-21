@@ -24,6 +24,9 @@ export function useAdminUsers() {
         role: d.role as UserRole,
         isApproved: d.is_active,
         createdAt: d.created_at,
+        courseId: d.course_id,
+        editalId: d.edital_id,
+        activeUntil: d.active_until,
         passwordHash: "", // Not used
       }));
     },
@@ -53,6 +56,46 @@ export function useBlockUser() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin_users"] });
     },
+  });
+}
+
+export function useMigrateUsersEdital() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { oldEditalId: number; newEditalId: number }) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ edital_id: vars.newEditalId })
+        .eq("edital_id", vars.oldEditalId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin_users"] });
+      toast.success("Alunos transferidos com sucesso!");
+    },
+  });
+}
+
+export function useUpdateUserProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { id: string; courseId?: number | null; editalId?: number | null; activeUntil?: string | null }) => {
+      const payload: any = {};
+      if (vars.courseId !== undefined) payload.course_id = vars.courseId;
+      if (vars.editalId !== undefined) payload.edital_id = vars.editalId;
+      if (vars.activeUntil !== undefined) payload.active_until = vars.activeUntil;
+      
+      const { error } = await supabase
+        .from("profiles")
+        .update(payload)
+        .eq("id", vars.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin_users"] });
+      toast.success("Perfil atualizado com sucesso!");
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 }
 
@@ -680,3 +723,163 @@ export function useUpdatePlan() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin_plans"] }),
   });
 }
+
+// ---------------------------------------------------------
+// LAW REFERENCES — Catálogo de Normas/Leis
+// ---------------------------------------------------------
+
+export function useLawReferences(topicId?: number) {
+  return useQuery({
+    queryKey: ["law_references", topicId],
+    queryFn: async () => {
+      let q = supabase
+        .from("law_references")
+        .select("*, topics(name)")
+        .eq("is_active", true)
+        .order("name");
+      if (topicId) q = q.eq("topic_id", topicId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useAllLawReferences() {
+  return useQuery({
+    queryKey: ["law_references_all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("law_references")
+        .select("*, topics(name)")
+        .order("name");
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useCreateLawReference() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { name: string; short_name?: string; topic_id?: number; description?: string }) => {
+      const { data, error } = await supabase
+        .from("law_references")
+        .insert({ ...vars, is_active: true })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["law_references"] });
+      qc.invalidateQueries({ queryKey: ["law_references_all"] });
+    },
+  });
+}
+
+export function useUpdateLawReference() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { id: number; name: string; short_name?: string; topic_id?: number; description?: string; is_active?: boolean }) => {
+      const { id, ...updates } = vars;
+      const { error } = await supabase.from("law_references").update(updates).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["law_references"] });
+      qc.invalidateQueries({ queryKey: ["law_references_all"] });
+    },
+  });
+}
+
+export function useDeleteLawReference() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase.from("law_references").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["law_references"] });
+      qc.invalidateQueries({ queryKey: ["law_references_all"] });
+      qc.invalidateQueries({ queryKey: ["edital_laws"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------
+// EDITAL ↔ LAW REFERENCES — Vínculo edital/normas
+// ---------------------------------------------------------
+
+export function useEditalLaws(editalId?: number) {
+  return useQuery({
+    queryKey: ["edital_laws", editalId],
+    queryFn: async () => {
+      if (!editalId) return [];
+      const { data, error } = await supabase
+        .from("edital_law_references")
+        .select("law_reference_id, law_references(id, name, short_name, topic_id, topics(name))")
+        .eq("edital_id", editalId);
+      if (error) throw error;
+      return (data || []).map((row: any) => row.law_references).filter(Boolean);
+    },
+    enabled: !!editalId,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useLinkLawToEdital() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { edital_id: number; law_reference_id: number }) => {
+      const { error } = await supabase
+        .from("edital_law_references")
+        .upsert(vars, { onConflict: "edital_id,law_reference_id" });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["edital_laws", vars.edital_id] }),
+  });
+}
+
+export function useUnlinkLawFromEdital() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { edital_id: number; law_reference_id: number }) => {
+      const { error } = await supabase
+        .from("edital_law_references")
+        .delete()
+        .eq("edital_id", vars.edital_id)
+        .eq("law_reference_id", vars.law_reference_id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["edital_laws", vars.edital_id] }),
+  });
+}
+
+// ---------------------------------------------------------
+// Filtro: busca law_reference_ids ativos para um curso
+// (usado no front p/ restringir questões/flashcards/resumos)
+// ---------------------------------------------------------
+
+export function useCourseLawReferenceIds(courseId?: number | null) {
+  return useQuery({
+    queryKey: ["course_law_ids", courseId],
+    queryFn: async () => {
+      if (!courseId) return null; // null = sem filtro de lei (exibe tudo)
+      const { data, error } = await supabase
+        .from("v_course_active_laws")
+        .select("law_reference_id")
+        .eq("course_id", courseId);
+      if (error) throw error;
+      // Se nenhuma lei vinculada ao curso, retorna null (sem filtro restrictivo)
+      if (!data || data.length === 0) return null;
+      return data.map((row: any) => Number(row.law_reference_id));
+    },
+    staleTime: 1000 * 60 * 15,
+    enabled: courseId !== undefined,
+  });
+}
+

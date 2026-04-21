@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessContent, isUserActive } from "@/services/accessService";
-import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP } from "@/hooks/useStudyData";
+import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { Flashcard } from "@/types/study";
 
@@ -29,6 +29,11 @@ function FlashcardViewer({ card, onRate }: {
         <Badge variant="outline" className="text-xs border-border text-muted-foreground">
           {card.topic}
         </Badge>
+        {card.lawReferenceName && (
+          <Badge variant="outline" className="text-xs border-violet-500/30 text-violet-400 bg-violet-500/5">
+            ⚖️ {card.lawReferenceName}
+          </Badge>
+        )}
       </div>
 
       <button onClick={() => setFlipped(!flipped)}
@@ -84,9 +89,21 @@ function FlashcardViewer({ card, onRate }: {
 export default function FlashcardsPage() {
   const { user, isApproved, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
+  const courseIdNum = user?.courseId ? Number(user.courseId) : null;
+  const editalIdNum = user?.editalId ? Number(user.editalId) : null;
+
+  // Busca as leis ativas do edital do usuário
+  const { data: activeLawIds } = useActiveLawIdsForCourse(
+    isAdmin ? null : courseIdNum,
+    isAdmin ? null : editalIdNum
+  );
+
   const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
   const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
-  const { data: flashcards = [], isLoading: loadingF } = useFlashcards(isAdmin ? undefined : courseId);
+  const { data: flashcards = [], isLoading: loadingF } = useFlashcards(
+    isAdmin ? undefined : courseId,
+    isAdmin ? null : activeLawIds
+  );
   const { data: userReviews = [], isLoading: loadingStats } = useUserFlashcardReviews(user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
   

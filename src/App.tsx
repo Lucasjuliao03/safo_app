@@ -35,6 +35,7 @@ import AdminMentoriaDashboard from "./pages/admin/AdminMentoriaDashboard";
 import AdminMentoriaAluno from "./pages/admin/AdminMentoriaAluno";
 import AdminPatrulhamento from "./pages/admin/AdminPatrulhamento";
 import AdminPatrulhamentoEditor from "./pages/admin/AdminPatrulhamentoEditor";
+import AdminLawReferences from "./pages/admin/AdminLawReferences";
 
 import MentoriaDashboard from "./pages/mentoria/MentoriaDashboard";
 import MentoriaExecucao from "./pages/mentoria/MentoriaExecucao";
@@ -127,6 +128,7 @@ const AppRoutes = () => {
           
           <Route path="/painel/patrulhamento" element={<ProtectedRoute><AdminRoute><AdminPatrulhamento /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/patrulhamento/:courseId" element={<ProtectedRoute><AdminRoute><AdminPatrulhamentoEditor /></AdminRoute></ProtectedRoute>} />
+          <Route path="/painel/normas" element={<ProtectedRoute><AdminRoute><AdminLawReferences /></AdminRoute></ProtectedRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

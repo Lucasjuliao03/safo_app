@@ -15,6 +15,8 @@ export interface Question {
   id: string;
   subjectId: string;
   topicId: string | null;
+  lawReferenceId?: number | null;
+  lawReferenceName?: string | null;  // Nome curto da norma vinculada
   topic: string;
   subtopic: string;
   difficulty: "fácil" | "média" | "difícil";
@@ -32,6 +34,8 @@ export interface Flashcard {
   id: string;
   subjectId: string;
   topicId: string | null;
+  lawReferenceId?: number | null;
+  lawReferenceName?: string | null;
   topic: string;
   front: string;
   back: string;
@@ -74,6 +78,7 @@ export interface User {
   isApproved: boolean;
   createdAt: string;
   courseId?: number;
+  editalId?: number | null;
   activeUntil?: string | null;
 }
 
