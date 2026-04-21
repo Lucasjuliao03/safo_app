@@ -4,8 +4,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { usePatrulhamentoTrilha } from '@/hooks/usePatrulhamento';
-import { updatePatrulhaFase } from '@/services/patrulhamentoService';
-import { ChevronLeft, ChevronDown, ChevronRight, Settings, Save, ShieldAlert, Target, BrainCircuit, Star, Type, Lock } from 'lucide-react';
+import { updatePatrulhaFase, updatePatrulhaCampanha, updatePatrulhaSetor } from '@/services/patrulhamentoService';
+import { ChevronLeft, ChevronDown, ChevronRight, Settings, Save, ShieldAlert, Target, BrainCircuit, Star, Type, Lock, MapPin, Flag, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ export default function AdminPatrulhamentoEditor() {
   const [openSetores, setOpenSetores] = useState<Record<number, boolean>>({});
 
   // Foco do Editor
-  const [selectedFase, setSelectedFase] = useState<any | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<{ type: 'fase'|'setor'|'campanha', data: any } | null>(null);
 
   const toggleCampanha = (id: number) => setOpenCampanhas(prev => ({ ...prev, [id]: !prev[id] }));
   const toggleSetor = (id: number) => setOpenSetores(prev => ({ ...prev, [id]: !prev[id] }));
@@ -31,7 +31,7 @@ export default function AdminPatrulhamentoEditor() {
   const [editForm, setEditForm] = useState<any>({});
   
   const handleSelectFase = (fase: any) => {
-      setSelectedFase(fase);
+      setSelectedEntity({ type: 'fase', data: fase });
       // Fazer parse do JSON para facilitar a edição pelo admin
       const questionIdsRaw = fase.payload_json?.question_ids?.join(', ') || '';
       const fallbackTopicId = fase.payload_json?.topic_id || '';
@@ -47,15 +47,34 @@ export default function AdminPatrulhamentoEditor() {
       });
   };
 
+  const handleSelectCampanha = (camp: any) => {
+      setSelectedEntity({ type: 'campanha', data: camp });
+      setEditForm({
+          titulo: camp.titulo,
+          descricao: camp.descricao || '',
+          ordem: camp.ordem
+      });
+  };
+
+  const handleSelectSetor = (setor: any) => {
+      setSelectedEntity({ type: 'setor', data: setor });
+      setEditForm({
+          titulo: setor.titulo,
+          ordem: setor.ordem
+      });
+  };
+
   const updateMutation = useMutation({
       mutationFn: async (data: any) => {
-          if (!selectedFase) return;
-          await updatePatrulhaFase(selectedFase.id, data);
+          if (!selectedEntity) return;
+          if (selectedEntity.type === 'fase') await updatePatrulhaFase(selectedEntity.data.id, data);
+          if (selectedEntity.type === 'campanha') await updatePatrulhaCampanha(selectedEntity.data.id, data);
+          if (selectedEntity.type === 'setor') await updatePatrulhaSetor(selectedEntity.data.id, data);
       },
       onSuccess: () => {
-          toast.success("Fase atualizada com sucesso!");
+          toast.success("Configuração atualizada com sucesso!");
           refetch();
-          setSelectedFase(null);
+          setSelectedEntity(null);
       },
       onError: (e: any) => {
           toast.error("Erro ao salvar: " + e.message);
@@ -63,27 +82,38 @@ export default function AdminPatrulhamentoEditor() {
   });
 
   const handleSave = () => {
-      if (!selectedFase) return;
+      if (!selectedEntity) return;
 
-      const payload = { ...selectedFase.payload_json };
-      
-      // Lidar com o overwrite de IDs
-      if (editForm.specific_ids && editForm.specific_ids.trim() !== '') {
-          const arr = editForm.specific_ids.split(',').map((id: string) => Number(id.trim())).filter(Number);
-          payload.question_ids = arr;
-      } else {
-          // Remover restriction if empty
-          delete payload.question_ids;
+      if (selectedEntity.type === 'fase') {
+          const payload = { ...selectedEntity.data.payload_json };
+          
+          if (editForm.specific_ids && editForm.specific_ids.trim() !== '') {
+              const arr = editForm.specific_ids.split(',').map((id: string) => Number(id.trim())).filter(Number);
+              payload.question_ids = arr;
+          } else {
+              delete payload.question_ids;
+          }
+
+          updateMutation.mutate({
+              titulo: editForm.titulo,
+              descricao: editForm.descricao,
+              limite_itens: Number(editForm.limite_itens),
+              req_acertos: Number(editForm.req_acertos),
+              xp_reward: Number(editForm.xp_reward),
+              payload_json: payload,
+          });
+      } else if (selectedEntity.type === 'campanha') {
+          updateMutation.mutate({
+              titulo: editForm.titulo,
+              descricao: editForm.descricao,
+              ordem: Number(editForm.ordem)
+          });
+      } else if (selectedEntity.type === 'setor') {
+          updateMutation.mutate({
+              titulo: editForm.titulo,
+              ordem: Number(editForm.ordem)
+          });
       }
-
-      updateMutation.mutate({
-          titulo: editForm.titulo,
-          descricao: editForm.descricao,
-          limite_itens: Number(editForm.limite_itens),
-          req_acertos: Number(editForm.req_acertos),
-          xp_reward: Number(editForm.xp_reward),
-          payload_json: payload,
-      });
   };
 
   if (isLoading) return <AdminLayout><div className="p-12 text-center animate-pulse">Carregando árvore de operações...</div></AdminLayout>;
@@ -121,7 +151,12 @@ export default function AdminPatrulhamentoEditor() {
                                   {openCampanhas[camp.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                   {camp.titulo}
                               </div>
-                              <span className="text-xs bg-background px-2 py-0.5 rounded-full border border-border">{camp.setores?.length || 0} Setores</span>
+                              <div className="flex items-center gap-2">
+                                  <button onClick={(e) => { e.stopPropagation(); handleSelectCampanha(camp); }} className="hover:bg-primary/20 p-1 rounded transition text-primary">
+                                     <Edit3 className="w-3 h-3" />
+                                  </button>
+                                  <span className="text-xs bg-background px-2 py-0.5 rounded-full border border-border">{camp.setores?.length || 0} Setores</span>
+                               </div>
                            </div>
 
                            {openCampanhas[camp.id] && (
@@ -136,7 +171,12 @@ export default function AdminPatrulhamentoEditor() {
                                                   {openSetores[setor.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                   {setor.titulo}
                                                </div>
-                                               <span className="text-[10px] uppercase font-bold text-muted-foreground">{setor.fases?.length || 0} Nós</span>
+                                               <div className="flex items-center gap-2">
+                                                   <button onClick={(e) => { e.stopPropagation(); handleSelectSetor(setor); }} className="hover:bg-primary/20 p-1 rounded transition text-primary">
+                                                      <Edit3 className="w-3 h-3" />
+                                                   </button>
+                                                   <span className="text-[10px] uppercase font-bold text-muted-foreground">{setor.fases?.length || 0} Nós</span>
+                                                </div>
                                           </div>
 
                                           {openSetores[setor.id] && (
@@ -147,7 +187,7 @@ export default function AdminPatrulhamentoEditor() {
                                                          onClick={() => handleSelectFase(fase)}
                                                          className={cn(
                                                              "flex items-center justify-between p-2 pl-6 rounded cursor-pointer transition border border-transparent text-sm hover:bg-card hover:border-border",
-                                                             selectedFase?.id === fase.id && "bg-primary/10 border-primary/30 shadow-sm"
+                                                             selectedEntity?.type === 'fase' && selectedEntity.data.id === fase.id && "bg-primary/10 border-primary/30 shadow-sm"
                                                          )}
                                                       >
                                                           <div className="flex items-center gap-2">
@@ -155,7 +195,7 @@ export default function AdminPatrulhamentoEditor() {
                                                               {fase.tipo_fase === 'questoes' && <Target className="w-3.5 h-3.5 text-warning" />}
                                                               {fase.tipo_fase === 'flashcards' && <Star className="w-3.5 h-3.5 text-success" />}
                                                               {fase.tipo_fase === 'checkpoint' && <ShieldAlert className="w-3.5 h-3.5 text-destructive" />}
-                                                              <span className={cn("truncate max-w-[180px]", selectedFase?.id === fase.id && "font-bold text-primary")}>
+                                                              <span className={cn("truncate max-w-[180px]", selectedEntity?.type === 'fase' && selectedEntity.data.id === fase.id && "font-bold text-primary")}>
                                                                  {fase.titulo}
                                                               </span>
                                                           </div>
@@ -178,18 +218,22 @@ export default function AdminPatrulhamentoEditor() {
 
             {/* Direita: Editor Visual da Fase */}
             <div className="flex-1 bg-card border border-primary/20 rounded-2xl shadow-xl shadow-primary/5 p-6 h-fit sticky top-24">
-                {!selectedFase ? (
+                {!selectedEntity ? (
                    <div className="h-48 flex flex-col items-center justify-center text-muted-foreground/50">
                        <Settings className="w-12 h-12 mb-2 opacity-50" />
-                       <p>Selecione um nó (Fase) à esquerda para editá-lo.</p>
+                       <p>Selecione uma Campanha, Setor ou Nó à esquerda para editar.</p>
                    </div>
                 ) : (
                    <div className="space-y-5 animate-fade-in">
                        <div className="flex items-center gap-3 border-b border-border pb-3">
-                           <div className="bg-primary/20 p-2 rounded-xl text-primary"><Settings className="w-5 h-5" /></div>
+                           <div className="bg-primary/20 p-2 rounded-xl text-primary">
+                              {selectedEntity.type === 'campanha' && <Flag className="w-5 h-5" />}
+                              {selectedEntity.type === 'setor' && <MapPin className="w-5 h-5" />}
+                              {selectedEntity.type === 'fase' && <Settings className="w-5 h-5" />}
+                           </div>
                            <div>
-                               <h2 className="font-black text-lg leading-tight">Configuração da Fase</h2>
-                               <p className="text-xs uppercase font-bold text-muted-foreground">ID Interno: {selectedFase.id} | Tipo: {selectedFase.tipo_fase}</p>
+                               <h2 className="font-black text-lg leading-tight">Configuração da {selectedEntity.type === 'fase' ? 'Fase' : selectedEntity.type === 'setor' ? 'Operação (Setor)' : 'Campanha'}</h2>
+                               <p className="text-xs uppercase font-bold text-muted-foreground">ID Interno: {selectedEntity.data.id} {selectedEntity.type === 'fase' && `| Tipo: ${selectedEntity.data.tipo_fase}`}</p>
                            </div>
                        </div>
 
@@ -199,40 +243,59 @@ export default function AdminPatrulhamentoEditor() {
                                <Input value={editForm.titulo} onChange={e => setEditForm({...editForm, titulo: e.target.value})} className="bg-muted/50 font-bold" />
                            </div>
                            
-                           <div className="space-y-1">
-                               <label className="text-xs font-bold uppercase text-muted-foreground">Ordem de Operação (Descritivo)</label>
-                               <Textarea value={editForm.descricao} onChange={e => setEditForm({...editForm, descricao: e.target.value})} rows={2} className="resize-none text-sm bg-muted/50" />
-                           </div>
+                           {selectedEntity.type !== 'setor' && (
+                               <div className="space-y-1">
+                                   <label className="text-xs font-bold uppercase text-muted-foreground">Descrição</label>
+                                   <Textarea value={editForm.descricao} onChange={e => setEditForm({...editForm, descricao: e.target.value})} rows={2} className="resize-none text-sm bg-muted/50" />
+                               </div>
+                           )}
 
-                           <div className="grid grid-cols-3 gap-3">
+                           {selectedEntity.type === 'campanha' && (
                                <div className="space-y-1">
-                                   <label className="text-[10px] font-bold uppercase text-muted-foreground opacity-70">XP Recompensa</label>
-                                   <Input type="number" value={editForm.xp_reward} onChange={e => setEditForm({...editForm, xp_reward: e.target.value})} />
+                                   <label className="text-xs font-bold uppercase text-muted-foreground">Ordem (Exibição)</label>
+                                   <Input type="number" value={editForm.ordem} onChange={e => setEditForm({...editForm, ordem: e.target.value})} />
                                </div>
-                               <div className="space-y-1">
-                                   <label className="text-[10px] font-bold uppercase text-warning opacity-70">Total de Itens (Sort)</label>
-                                   <Input type="number" value={editForm.limite_itens} onChange={e => setEditForm({...editForm, limite_itens: e.target.value})} disabled={selectedFase.tipo_fase === 'teoria'} />
-                               </div>
-                               <div className="space-y-1">
-                                   <label className="text-[10px] font-bold uppercase text-destructive opacity-70">Mín. Acertos (Passe)</label>
-                                   <Input type="number" value={editForm.req_acertos} onChange={e => setEditForm({...editForm, req_acertos: e.target.value})} disabled={selectedFase.tipo_fase === 'teoria'} />
-                               </div>
-                           </div>
+                           )}
 
-                           <div className="bg-destructive/5 border border-destructive/20 p-4 rounded-xl space-y-2 mt-4 relative overflow-hidden">
-                               <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none"><Lock className="w-20 h-20" /></div>
-                               <h3 className="text-sm font-black text-destructive">Trava de ID Específico (Engessamento)</h3>
-                               <p className="text-[11px] text-muted-foreground leading-relaxed pr-8">
-                                   Se deixar vazio, puxaremos `limite_itens` aleatórios do Tema Base ({editForm.topic_id || 'Nenhum'}).
-                                   Para forçar essa fase a mostrar APENAS IDs de questões ou flashcards imutáveis, digite-os separados por vírgula (ex: `10, 45, 91`).
-                               </p>
-                               <Input 
-                                  placeholder="Vazio = Aleatório baseado no Tema" 
-                                  value={editForm.specific_ids} 
-                                  onChange={e => setEditForm({...editForm, specific_ids: e.target.value})} 
-                                  className="font-mono text-sm border-destructive/30 focus-visible:ring-destructive"
-                               />
-                           </div>
+                           {selectedEntity.type === 'setor' && (
+                               <div className="space-y-1">
+                                   <label className="text-xs font-bold uppercase text-muted-foreground">Ordem (Exibição)</label>
+                                   <Input type="number" value={editForm.ordem} onChange={e => setEditForm({...editForm, ordem: e.target.value})} />
+                               </div>
+                           )}
+
+                           {selectedEntity.type === 'fase' && (
+                               <>
+                                   <div className="grid grid-cols-3 gap-3">
+                                       <div className="space-y-1">
+                                           <label className="text-[10px] font-bold uppercase text-muted-foreground opacity-70">XP Recompensa</label>
+                                           <Input type="number" value={editForm.xp_reward} onChange={e => setEditForm({...editForm, xp_reward: e.target.value})} />
+                                       </div>
+                                       <div className="space-y-1">
+                                           <label className="text-[10px] font-bold uppercase text-warning opacity-70">Total Itens (Sort)</label>
+                                           <Input type="number" value={editForm.limite_itens} onChange={e => setEditForm({...editForm, limite_itens: e.target.value})} disabled={selectedEntity.data.tipo_fase === 'teoria'} />
+                                       </div>
+                                       <div className="space-y-1">
+                                           <label className="text-[10px] font-bold uppercase text-destructive opacity-70">Mín. Acertos</label>
+                                           <Input type="number" value={editForm.req_acertos} onChange={e => setEditForm({...editForm, req_acertos: e.target.value})} disabled={selectedEntity.data.tipo_fase === 'teoria'} />
+                                       </div>
+                                   </div>
+
+                                   <div className="bg-destructive/5 border border-destructive/20 p-4 rounded-xl space-y-2 mt-4 relative overflow-hidden">
+                                       <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none"><Lock className="w-20 h-20" /></div>
+                                       <h3 className="text-sm font-black text-destructive">Trava de ID Específico (Engessamento)</h3>
+                                       <p className="text-[11px] text-muted-foreground leading-relaxed pr-8">
+                                           Se deixar vazio, puxaremos aleatoriamente. Para forçar APENAS IDs de questões fixas, digite-os separados por vírgula (ex: `10, 45, 91`).
+                                       </p>
+                                       <Input 
+                                          placeholder="Vazio = Aleatório baseado no Tema" 
+                                          value={editForm.specific_ids} 
+                                          onChange={e => setEditForm({...editForm, specific_ids: e.target.value})} 
+                                          className="font-mono text-sm border-destructive/30 focus-visible:ring-destructive"
+                                       />
+                                   </div>
+                               </>
+                           )}
                        </div>
 
                        <Button 

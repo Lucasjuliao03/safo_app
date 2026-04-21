@@ -163,6 +163,22 @@ export async function updatePatrulhaFase(faseId: number, data: Partial<PatrulhaF
   if (error) throw error;
 }
 
+export async function updatePatrulhaCampanha(campanhaId: number, data: Partial<{ titulo: string; descricao: string; ordem: number }>) {
+  const { error } = await supabase
+    .from('patrulhamento_campanhas')
+    .update(data)
+    .eq('id', campanhaId);
+  if (error) throw error;
+}
+
+export async function updatePatrulhaSetor(setorId: number, data: Partial<{ titulo: string; ordem: number }>) {
+  const { error } = await supabase
+    .from('patrulhamento_setores')
+    .update(data)
+    .eq('id', setorId);
+  if (error) throw error;
+}
+
 // ============================================================================
 // AUTO-BUILDER ENGINE (NÍVEL ADMIN)
 // ============================================================================
@@ -203,14 +219,29 @@ export async function autoBuildTrilhaForCourse(courseId: number) {
   const subjectMap = new Map();
   subjects?.forEach(s => subjectMap.set(s.id, s.name));
 
-  // 2.1 Fetch content counts per topic to only create valid phases
-  const { data: allQuestions } = await supabase.from('questions').select('topic_id').eq('is_active', true).eq('status', 'published');
-  const { data: allFlashcards } = await supabase.from('flashcards').select('topic_id').eq('is_active', true).eq('status', 'published');
-  const { data: allSummaries } = await supabase.from('summaries').select('topic_id').eq('is_active', true).eq('status', 'published');
+  // 2.1 Fetch content counts per topic to only create valid phases (handling >1000 rows pagination natively)
+  const fetchActiveTopicIds = async (table: string) => {
+      let page = 0;
+      const ids = new Set<number>();
+      while (true) {
+          const { data, error } = await supabase
+              .from(table)
+              .select('topic_id')
+              .eq('is_active', true)
+              .eq('status', 'published')
+              .range(page * 1000, (page + 1) * 1000 - 1);
+          
+          if (error || !data || data.length === 0) break;
+          data.forEach(row => { if (row.topic_id) ids.add(Number(row.topic_id)) });
+          if (data.length < 1000) break;
+          page++;
+      }
+      return ids;
+  };
 
-  const topicHasQuestions = new Set(allQuestions?.map(q => q.topic_id));
-  const topicHasFlashcards = new Set(allFlashcards?.map(f => f.topic_id));
-  const topicHasSummaries = new Set(allSummaries?.map(s => s.topic_id));
+  const topicHasQuestions = await fetchActiveTopicIds('questions');
+  const topicHasFlashcards = await fetchActiveTopicIds('flashcards');
+  const topicHasSummaries = await fetchActiveTopicIds('summaries');
 
   // 3. Organizar blocos
   // Como são muitas matérias, faremos 1 Campanha por Matéria (ou agrupado).

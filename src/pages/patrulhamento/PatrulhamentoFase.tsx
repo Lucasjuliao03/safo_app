@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePatrulhamentoTrilha, useCompletarFase } from '@/hooks/usePatrulhamento';
 import { useSummaries, useQuestions, useFlashcards } from '@/hooks/useStudyData';
-import { ChevronLeft, Target, Award, BrainCircuit, Play, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronLeft, Target, Award, BrainCircuit, Play, CheckCircle, XCircle, Check, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,9 +16,9 @@ export default function PatrulhamentoFase() {
   const courseId = user?.courseId ? Number(user.courseId) : null;
   
   const { data: campanhas, isLoading: loadingCartography } = usePatrulhamentoTrilha(courseId);
-  const { data: summaries = [], isLoading: loadingSummaries } = useSummaries(String(courseId));
-  const { data: allQuestions = [], isLoading: loadingQuestions } = useQuestions(String(courseId));
-  const { data: flashcards = [], isLoading: loadingFlashcards } = useFlashcards(String(courseId));
+  const { data: summaries, isLoading: loadingSummaries } = useSummaries(String(courseId));
+  const { data: allQuestions, isLoading: loadingQuestions } = useQuestions(String(courseId));
+  const { data: flashcards, isLoading: loadingFlashcards } = useFlashcards(String(courseId));
 
   const completarMutation = useCompletarFase();
   
@@ -30,6 +30,7 @@ export default function PatrulhamentoFase() {
   const [acertos, setAcertos] = useState(0);
   const [answeredState, setAnsweredState] = useState<{ selectedOptionId?: string, isCorrect?: boolean } | null>(null);
   const [itemsList, setItemsList] = useState<any[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     if (!campanhas || !id) return;
@@ -54,18 +55,19 @@ export default function PatrulhamentoFase() {
 
     if (fase.tipo_fase === 'questoes' || fase.tipo_fase === 'checkpoint') {
        let filtered: any[] = [];
+       const questionsList = allQuestions || [];
        const specificIds = fase.payload_json?.question_ids;
 
        if (specificIds && Array.isArray(specificIds) && specificIds.length > 0) {
           // Engessado pelo Admin: Puxa exatamente as questões pedidas
-          filtered = allQuestions.filter(q => specificIds.includes(Number(q.id)));
+          filtered = questionsList.filter(q => specificIds.includes(Number(q.id)));
           // Opcional: ordenar as questões na mesma ordem do array engessado
           filtered.sort((a,b) => specificIds.indexOf(Number(a.id)) - specificIds.indexOf(Number(b.id)));
        } else if (mixTopics && mixTopics.length > 0) {
-          filtered = allQuestions.filter(q => q.topicId && mixTopics.includes(Number(q.topicId)));
+          filtered = questionsList.filter(q => q.topicId && mixTopics.includes(Number(q.topicId)));
           filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens);
        } else if (topicId) {
-          filtered = allQuestions.filter(q => q.topicId === String(topicId));
+          filtered = questionsList.filter(q => q.topicId === String(topicId));
           filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens);
        }
        
@@ -77,12 +79,13 @@ export default function PatrulhamentoFase() {
 
     if (fase.tipo_fase === 'flashcards') {
         let filtered: any[] = [];
+        const fList = flashcards || [];
         const specificIds = fase.payload_json?.question_ids; // Usando o mesmo field para praticidade no JSON
 
         if (specificIds && Array.isArray(specificIds) && specificIds.length > 0) {
-            filtered = flashcards.filter(f => specificIds.includes(Number(f.id)));
+            filtered = fList.filter(f => specificIds.includes(Number(f.id)));
         } else {
-            filtered = topicId ? flashcards.filter(f => f.topicId === String(topicId)) : flashcards;
+            filtered = topicId ? fList.filter(f => f.topicId === String(topicId)) : fList;
             filtered = filtered.sort(() => 0.5 - Math.random()).slice(0, fase.limite_itens || 10);
         }
         
@@ -93,11 +96,27 @@ export default function PatrulhamentoFase() {
 
   const isLoading = loadingCartography || loadingSummaries || loadingQuestions || loadingFlashcards;
 
+  const dynamicReq = useMemo(() => {
+     if (!fase || !itemsList) return 0;
+     if (fase.req_acertos <= 0) return 0;
+     if (itemsList.length === 0) return fase.req_acertos;
+
+     if (itemsList.length < fase.limite_itens) {
+         const prop = fase.req_acertos / Math.max(fase.limite_itens, 1);
+         return Math.max(1, Math.round(itemsList.length * prop));
+     }
+     if (itemsList.length < fase.req_acertos) {
+         return itemsList.length;
+     }
+
+     return fase.req_acertos;
+  }, [fase, itemsList]);
+
   if (isLoading) return <div className="p-8 text-center mt-20 animate-pulse text-muted-foreground font-bold tracking-widest text-xs uppercase">Carregando Instrução...</div>;
   if (!fase) return <div className="p-8 text-center text-destructive">Fase não encontrada ou acesso negado.</div>;
 
   const summaryMatch = fase.tipo_fase === 'teoria' 
-     ? summaries.find(s => s.topicId === String(fase.payload_json?.topic_id)) 
+     ? (summaries || []).find(s => s.topicId === String(fase.payload_json?.topic_id)) 
      : null;
 
   const currentInteractionItem = itemsList[currentIndex];
@@ -111,8 +130,10 @@ export default function PatrulhamentoFase() {
            nextFaseId: nextFaseId,
            xpGanho: fase.xp_reward || 0
        });
-       toast.success(`Operação Concluída: ${fase.titulo}! +${fase.xp_reward} XP`);
-       navigate('/patrulhamento');
+       setShowSuccess(true);
+       setTimeout(() => {
+           navigate('/patrulhamento');
+       }, 2500);
     } catch (e: any) {
        toast.error("Erro ao salvar progresso: " + e.message);
     }
@@ -135,14 +156,31 @@ export default function PatrulhamentoFase() {
           setAnsweredState(null);
       } else {
           // Finish Logic
-          if (acertos >= fase.req_acertos) {
+          if (acertos >= dynamicReq) {
               handleCompleteSuccess();
           } else {
-              toast.error(`Falha na Operação. Você acertou ${acertos} de ${itemsList.length}. Necessário: ${fase.req_acertos}.`);
+              toast.error(`Falha na Operação. Você acertou ${acertos} de ${itemsList.length}. Necessário: ${dynamicReq}.`);
               navigate('/patrulhamento');
           }
       }
   };
+
+  if (showSuccess) {
+     return (
+       <div className="fixed inset-0 bg-success/20 backdrop-blur-sm z-[100] flex flex-col items-center justify-center animate-fade-in">
+          <div className="bg-card w-full max-w-sm rounded-[2rem] p-8 flex flex-col items-center text-center shadow-[0_0_50px_rgba(var(--success),0.3)] animate-slide-up border border-success/30">
+             <div className="w-24 h-24 bg-success rounded-full flex flex-col items-center justify-center shadow-lg border-4 border-success/20 mb-6 animate-bounce">
+                <Check className="w-12 h-12 text-success-foreground stroke-[3]" />
+             </div>
+             <h2 className="text-3xl font-black text-foreground mb-2">Operação Concluída!</h2>
+             <p className="text-muted-foreground font-medium mb-6">Você completou a fase {fase?.titulo}</p>
+             <div className="flex items-center gap-2 bg-warning/10 text-warning px-4 py-2 rounded-full font-black border border-warning/20">
+                <Star className="w-5 h-5 fill-warning" /> +{fase?.xp_reward} XP
+             </div>
+          </div>
+       </div>
+     );
+  }
 
   return (
     <div className="fixed inset-0 bg-background z-50 flex flex-col items-center animate-fade-in overflow-hidden">
@@ -198,7 +236,7 @@ export default function PatrulhamentoFase() {
                          <div className="space-y-6">
                             <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
                                <span>Alvo {currentIndex + 1} / {itemsList.length}</span>
-                               <span className="text-warning">Requisito: {fase.req_acertos} acertos</span>
+                               <span className="text-warning">Requisito: {dynamicReq} acertos</span>
                             </div>
 
                             <p className="text-lg leading-relaxed text-foreground font-medium mb-6">
