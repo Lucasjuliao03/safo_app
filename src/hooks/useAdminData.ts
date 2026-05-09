@@ -497,16 +497,29 @@ export function useQuestionStats() {
   return useQuery({
     queryKey: ["question_stats"],
     queryFn: async (): Promise<QuestionStats> => {
-      // Buscar todas as questões ativas
-      const { data: allQuestions, error } = await supabase
-        .from("questions")
-        .select("id, is_active, correct_option, format")
-        .limit(10000);
+      // Buscar todas as questões com paginação (Supabase limita a 1000 por request)
+      let allQuestions: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      
+      while (true) {
+        const { data, error } = await supabase
+          .from("questions")
+          .select("id, is_active, correct_option, format")
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) break;
+        
+        allQuestions = [...allQuestions, ...data];
+        
+        if (data.length < pageSize) break;
+        page++;
+      }
 
-      if (error) throw error;
-
-      const total = allQuestions?.length || 0;
-      const active = allQuestions?.filter(q => q.is_active).length || 0;
+      const total = allQuestions.length;
+      const active = allQuestions.filter(q => q.is_active).length;
       const inactive = total - active;
 
       // Função para verificar se está sem gabarito
@@ -519,7 +532,7 @@ export function useQuestionStats() {
         return false;
       };
 
-      const withoutAnswer = allQuestions?.filter(isMissingAnswer).length || 0;
+      const withoutAnswer = allQuestions.filter(isMissingAnswer).length;
       const withAnswer = total - withoutAnswer;
 
       return { total, withoutAnswer, withAnswer, active, inactive };
