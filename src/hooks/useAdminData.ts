@@ -482,8 +482,52 @@ export function useDeleteMessage() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin_messages"] }),
+});
+}
+
+export interface QuestionStats {
+  total: number;
+  withoutAnswer: number;
+  withAnswer: number;
+  active: number;
+  inactive: number;
+}
+
+export function useQuestionStats() {
+  return useQuery({
+    queryKey: ["question_stats"],
+    queryFn: async (): Promise<QuestionStats> => {
+      // Buscar todas as questões ativas
+      const { data: allQuestions, error } = await supabase
+        .from("questions")
+        .select("id, is_active, correct_option, format")
+        .limit(10000);
+
+      if (error) throw error;
+
+      const total = allQuestions?.length || 0;
+      const active = allQuestions?.filter(q => q.is_active).length || 0;
+      const inactive = total - active;
+
+      // Função para verificar se está sem gabarito
+      const isMissingAnswer = (q: any) => {
+        if (!q.correct_option) return true;
+        const val = String(q.correct_option).trim().toLowerCase();
+        if (val === '' || val === 'n/a') return true;
+        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
+        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
+        return false;
+      };
+
+      const withoutAnswer = allQuestions?.filter(isMissingAnswer).length || 0;
+      const withAnswer = total - withoutAnswer;
+
+      return { total, withoutAnswer, withAnswer, active, inactive };
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
   });
 }
+
 export function useAdminQuestions(filters?: { subjectId?: number; topicId?: number; is_active?: boolean }) {
   return useQuery({
     queryKey: ["admin_questions", filters],

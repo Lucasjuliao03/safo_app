@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { useAdminQuestions, useCreateQuestion, useUpdateQuestion, useDeleteQuestion, useAdminSubjects, useAdminTopics, useAdminExamBoards, useCreateExamBoard } from "@/hooks/useAdminData";
-import { Plus, Edit2, Filter, X, Trash2, UploadCloud } from "lucide-react";
+import { useAdminQuestions, useCreateQuestion, useUpdateQuestion, useDeleteQuestion, useAdminSubjects, useAdminTopics, useAdminExamBoards, useCreateExamBoard, useQuestionStats } from "@/hooks/useAdminData";
+import { Plus, Edit2, Filter, X, Trash2, UploadCloud, HelpCircle, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminQuestionImport } from "@/components/AdminQuestionImport";
 
@@ -13,6 +13,7 @@ export default function AdminQuestions() {
   const { data: subjects = [] } = useAdminSubjects();
   const { data: topics = [] } = useAdminTopics();
   const { data: boards = [] } = useAdminExamBoards();
+  const { data: stats } = useQuestionStats();
 
   const createMutation = useCreateQuestion();
   const updateMutation = useUpdateQuestion();
@@ -137,6 +138,42 @@ export default function AdminQuestions() {
             <h1 className="text-2xl font-bold text-foreground">Banco de Questões</h1>
             <p className="text-muted-foreground text-sm">Gerencie todas as questões da plataforma.</p>
           </div>
+          
+          {/* Cards de Estatísticas */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
+                <HelpCircle className="h-8 w-8 text-primary" />
+                <div>
+                  <p className="text-2xl font-bold text-primary">{stats.total}</p>
+                  <p className="text-xs text-muted-foreground">Total de Questões</p>
+                </div>
+              </div>
+              <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 flex items-center gap-3">
+                <XCircle className="h-8 w-8 text-destructive" />
+                <div>
+                  <p className="text-2xl font-bold text-destructive">{stats.withoutAnswer}</p>
+                  <p className="text-xs text-muted-foreground">Sem Gabarito</p>
+                </div>
+              </div>
+              <div className="bg-success/10 border border-success/20 rounded-xl p-3 flex items-center gap-3">
+                <CheckCircle className="h-8 w-8 text-success" />
+                <div>
+                  <p className="text-2xl font-bold text-success">{stats.withAnswer}</p>
+                  <p className="text-xs text-muted-foreground">Com Gabarito</p>
+                </div>
+              </div>
+              <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 flex items-center gap-3">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-accent/20">
+                  <span className="text-sm font-bold text-accent">{stats.active}</span>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-accent">{stats.inactive}</p>
+                  <p className="text-xs text-muted-foreground">Inativas</p>
+                </div>
+              </div>
+            </div>
+          )}
           {!isFormOpen && (
             <div className="flex gap-2">
               <button onClick={() => setIsImportOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-xl font-bold hover:bg-secondary/90 transition-colors shadow-sm">
