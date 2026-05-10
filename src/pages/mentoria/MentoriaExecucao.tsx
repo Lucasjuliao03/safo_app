@@ -347,16 +347,18 @@ export default function MentoriaExecucao() {
             // Extrair matéria do título
             const subjectName = task.subjects?.name || 'Instrução Geral';
             
-            // Extrair tema do título (formato: "📖 Teoria: Matéria - Tema ⚠️")
+            // O título pode ter formato: "DGEOP - DOUTRINA OPERACIONAL" ou similar
             let temaTitle = '';
+            let topicoTitle = '';
+            
             if (task.title) {
-              // Tentar extrair o tema após a matéria
-              const parts = task.title.split(/[-–—]/);
-              if (parts.length > 1) {
-                temaTitle = parts.slice(1).join(' ').replace(/⚠️|✅/g, '').trim();
+              // Separa por " - " ou "–" ou "—"
+              const parts = task.title.split(/\s*[-–—]\s*/);
+              if (parts.length >= 2) {
+                temaTitle = parts[0].trim(); // Primeira parte antes do tracinho (ex: DGEOP)
+                topicoTitle = parts.slice(1).join(' - ').replace(/⚠️|✅/g, '').trim(); // Resto (ex: DOUTRINA OPERACIONAL)
               } else {
-                // Se não tem traço, pega o título todo menos a parte da matéria
-                temaTitle = task.title.replace(/📖|📝|🎯|📚|⚡/g, '').trim();
+                temaTitle = task.title.replace(/⚠️|✅/g, '').trim();
               }
             }
 
@@ -385,15 +387,17 @@ export default function MentoriaExecucao() {
 
                 {/* Conteúdo */}
                 <div className="flex-1 min-w-0">
-                  {/* Tema (primeira linha) */}
-                  <p className={cn("text-sm font-semibold text-foreground truncate leading-tight", isCompleted && "text-muted-foreground line-through")}>
-                    {temaTitle || task.title || tc.label}
+                  {/* Matéria (primeira linha) */}
+                  <p className={cn("text-sm font-bold text-foreground truncate leading-tight", isCompleted && "text-muted-foreground line-through")}>
+                    {temaTitle || subjectName}
                   </p>
                   
-                  {/* Matéria (segunda linha) */}
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {subjectName}
-                  </p>
+                  {/* Tema (segunda linha) */}
+                  {topicoTitle && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {topicoTitle}
+                    </p>
+                  )}
                   
                   {/* Forma de estudo (terceira linha) */}
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mt-1">
