@@ -102,11 +102,29 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
       const line = index + 2; // +1 for 0-index, +1 for header
       
       let format = String(row.FORMATO || "").toLowerCase().trim();
-      if (format === "mc" || format === "múltipla escolha" || format === "multipla escolha") format = "multiple_choice";
-      if (format === "vf" || format === "v/f" || format === "verdadeiro ou falso") format = "true_false";
+      if (!format || format === "" || format === "multipla" || format === "escolha") format = "multiple_choice";
+      if (format === "mc" || format === "m" || format === "múltipla" || format === "multipla" || format === "escolha" || format === "múltipla escolha" || format === "multipla escolha") format = "multiple_choice";
+      if (format === "vf" || format === "v/f" || format === "verdadeiro" || format === "falso" || format === "verdadeiro ou falso") format = "true_false";
 
       const statement = preserveExcelText(row.ENUNCIADO);
-      const cor = String(row.CORRETA || "").toUpperCase().trim();
+      
+      // Garantir que o gabarito seja extraído corretamente
+      let corRaw = row.CORRETA;
+      let cor = "";
+      
+      // Tratar diferentes tipos de dados vindos do Excel
+      if (corRaw === null || corRaw === undefined || corRaw === "") {
+        cor = "";
+      } else if (typeof corRaw === "number") {
+        // Se for número, converter para letra (1=A, 2=B, etc)
+        if (corRaw >= 1 && corRaw <= 5) {
+          cor = String.fromCharCode(64 + corRaw);
+        } else {
+          cor = String(corRaw);
+        }
+      } else {
+        cor = String(corRaw).toUpperCase().trim();
+      }
       
       let diff = String(row.DIFICULDADE || "").toLowerCase().trim();
       if (diff === "f" || diff === "facil" || diff === "fácil") diff = "easy";
@@ -127,13 +145,15 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
         return;
       }
       
+      const upperCor = cor.toUpperCase();
+      
       if (format === "true_false") {
-        if (cor !== "V" && cor !== "F" && cor !== "C" && cor !== "E") {
+        if (upperCor !== "V" && upperCor !== "F" && upperCor !== "C" && upperCor !== "E") {
           newErrors.push(`Linha ${line}: CORRETA deve ser V ou F para questões true_false.`);
           return;
         }
       } else {
-        if (!["A", "B", "C", "D", "E"].includes(cor)) {
+        if (!["A", "B", "C", "D", "E"].includes(upperCor)) {
           newErrors.push(`Linha ${line}: CORRETA deve ser A, B, C, D ou E para questões de múltipla escolha.`);
           return;
         }
@@ -154,7 +174,7 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
         option_c: format === "multiple_choice" ? preserveExcelText(row.LETRA_C) : "",
         option_d: format === "multiple_choice" ? preserveExcelText(row.LETRA_D) : "",
         option_e: format === "multiple_choice" ? preserveExcelText(row.LETRA_E) : "",
-        correct_option: cor === "C" ? "V" : cor === "E" ? "F" : cor, // Suporte para C/E também
+        correct_option: format === "true_false" ? (upperCor === "C" ? "V" : upperCor === "E" ? "F" : upperCor) : upperCor,
         explanation: preserveExcelText(row.JUSTIFICATIVA),
         difficulty: diff,
         is_active: true,

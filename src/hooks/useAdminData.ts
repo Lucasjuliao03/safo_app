@@ -524,12 +524,31 @@ export function useQuestionStats() {
 
       // Função para verificar se está sem gabarito
       const isMissingAnswer = (q: any) => {
-        if (!q.correct_option) return true;
-        const val = String(q.correct_option).trim().toLowerCase();
+        const correctOption = q.correct_option;
+        
+        // Se não tem correct_option
+        if (!correctOption) return true;
+        
+        const val = String(correctOption).trim().toLowerCase();
+        
+        // Se estiver vazio ou n/a
         if (val === '' || val === 'n/a') return true;
-        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
-        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
-        return false;
+        
+        // Verificar se é válido para múltipla escolha (a,b,c,d,e) ou true_false (v,f,c,e)
+        const isValidMultipleChoice = ['a', 'b', 'c', 'd', 'e'].includes(val);
+        const isValidTrueFalse = ['v', 'f', 'c', 'e'].includes(val);
+        
+        // Se tem um format definido, usa ele, senão aceita ambos os padrões
+        const format = q.format ? q.format.toString().toLowerCase() : null;
+        
+        if (format === 'true_false') {
+          return !isValidTrueFalse;
+        } else if (format === 'multiple_choice') {
+          return !isValidMultipleChoice;
+        }
+        
+        // Sem format definido, aceita qualquer um dos padrões
+        return !(isValidMultipleChoice || isValidTrueFalse);
       };
 
       const withoutAnswer = allQuestions.filter(isMissingAnswer).length;

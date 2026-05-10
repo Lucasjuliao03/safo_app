@@ -335,30 +335,38 @@ export default function AdminQuestions() {
                 ) : questions.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Nenhuma questão encontrada para os filtros atuais.</td></tr>
                 ) : (
-                  [...questions].sort((a, b) => {
-                     const isMissing = (q: any) => {
-                        if (!q.correct_option) return true;
-                        const val = String(q.correct_option).trim().toLowerCase();
+[...questions].sort((a, b) => {
+                      const isMissing = (q: any) => {
+                        const correctOption = q.correct_option;
+                        if (!correctOption) return true;
+                        const val = String(correctOption).trim().toLowerCase();
                         if (val === '' || val === 'n/a') return true;
-                        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
-                        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
-                        return false;
-                     };
-                     
-                     const aMissing = isMissing(a);
-                     const bMissing = isMissing(b);
-                     if (aMissing && !bMissing) return -1;
-                     if (!aMissing && bMissing) return 1;
-                     return b.id - a.id;
+                        const isValidMC = ['a', 'b', 'c', 'd', 'e'].includes(val);
+                        const isValidTF = ['v', 'f', 'c', 'e'].includes(val);
+                        const format = q.format ? q.format.toString().toLowerCase() : null;
+                        if (format === 'true_false') return !isValidTF;
+                        if (format === 'multiple_choice') return !isValidMC;
+                        return !(isValidMC || isValidTF);
+                      };
+                      
+                      const aMissing = isMissing(a);
+                      const bMissing = isMissing(b);
+                      if (aMissing && !bMissing) return -1;
+                      if (!aMissing && bMissing) return 1;
+                      return b.id - a.id;
                   }).map(q => {
-                     const isMissingAnswer = (() => {
-                        if (!q.correct_option) return true;
-                        const val = String(q.correct_option).trim().toLowerCase();
+                      const isMissingAnswer = (() => {
+                        const correctOption = q.correct_option;
+                        if (!correctOption) return true;
+                        const val = String(correctOption).trim().toLowerCase();
                         if (val === '' || val === 'n/a') return true;
-                        if (q.format === 'true_false' && !['v','f','c','e'].includes(val)) return true;
-                        if (q.format !== 'true_false' && !['a','b','c','d','e'].includes(val)) return true;
-                        return false;
-                     })();
+                        const isValidMC = ['a', 'b', 'c', 'd', 'e'].includes(val);
+                        const isValidTF = ['v', 'f', 'c', 'e'].includes(val);
+                        const format = q.format ? q.format.toString().toLowerCase() : null;
+                        if (format === 'true_false') return !isValidTF;
+                        if (format === 'multiple_choice') return !isValidMC;
+                        return !(isValidMC || isValidTF);
+                      })();
                      
                     return (
                     <tr key={q.id} className={cn("transition-colors group", isMissingAnswer ? "bg-destructive/10 border-l-4 border-l-destructive hover:bg-destructive/20" : "hover:bg-muted/30")}>
