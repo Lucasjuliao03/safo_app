@@ -344,30 +344,15 @@ export default function MentoriaExecucao() {
             const tc = typeConfig[task.task_type] || typeConfig.theory;
             const TypeIcon = tc.icon;
 
-            // Extrair matéria do título
+            // Matéria do banco
             const subjectName = task.subjects?.name || 'Instrução Geral';
-            
-            // O título pode ter formato: "DGEOP - DOUTRINA OPERACIONAL" ou similar
-            let temaTitle = '';
-            let topicoTitle = '';
-            
-            if (task.title) {
-              // Separa por " - " ou "–" ou "—"
-              const parts = task.title.split(/\s*[-–—]\s*/);
-              if (parts.length >= 2) {
-                temaTitle = parts[0].trim(); // Primeira parte antes do tracinho (ex: DGEOP)
-                topicoTitle = parts.slice(1).join(' - ').replace(/⚠️|✅/g, '').trim(); // Resto (ex: DOUTRINA OPERACIONAL)
-              } else {
-                temaTitle = task.title.replace(/⚠️|✅/g, '').trim();
-              }
-            }
 
             return (
               <button
                 key={task.id}
                 onClick={() => handleOpenTask(task)}
                 className={cn(
-                  "w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all active:scale-[0.98]",
+                  "w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-all active:scale-[0.98]",
                   isCompleted ? "bg-success/5 border-success/30 shadow-sm" :
                   isDelayed   ? "bg-warning/5 border-warning/30" :
                                 "bg-card border-border hover:border-primary/40 shadow-sm"
@@ -375,44 +360,61 @@ export default function MentoriaExecucao() {
               >
                 {/* Ícone do tipo */}
                 <div className={cn(
-                  "flex items-center justify-center w-10 h-10 rounded-xl border shrink-0",
+                  "flex items-center justify-center w-9 h-9 rounded-lg border shrink-0",
                   isCompleted ? "bg-success/20 border-success/30 text-success" :
                   isDelayed   ? "bg-warning/20 border-warning/30 text-warning" :
                                 "bg-muted/60 border-border"
                 )}>
-                  {isCompleted ? <CheckCircle className="h-5 w-5 text-success" /> :
-                   isDelayed   ? <CalendarClock className="h-5 w-5 text-warning" /> :
-                                 <TypeIcon className={cn("h-5 w-5", tc.color)} />}
+                  {isCompleted ? <CheckCircle className="h-4 w-4 text-success" /> :
+                   isDelayed   ? <CalendarClock className="h-4 w-4 text-warning" /> :
+                                 <TypeIcon className={cn("h-4 w-4", tc.color)} />}
                 </div>
 
-                {/* Conteúdo */}
-                <div className="flex-1 min-w-0">
-                  {/* Matéria (primeira linha) */}
-                  <p className={cn("text-sm font-bold text-foreground truncate leading-tight", isCompleted && "text-muted-foreground line-through")}>
-                    {temaTitle || subjectName}
+                {/* Conteúdo - stack vertical */}
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  {/* Linha 1: Tema (título da tarefa) */}
+                  <p className={cn(
+                    "text-sm font-semibold text-foreground truncate", 
+                    isCompleted && "text-muted-foreground line-through"
+                  )} title={task.title}>
+                    {task.title}
                   </p>
                   
-                  {/* Tema (segunda linha) */}
-                  {topicoTitle && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {topicoTitle}
-                    </p>
-                  )}
-                  
-                  {/* Forma de estudo (terceira linha) */}
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mt-1">
-                    {tc.label}
+                  {/* Linha 2: Matéria */}
+                  <p className="text-xs text-muted-foreground truncate" title={subjectName}>
+                    {subjectName}
                   </p>
+                  
+                  {/* Linha 3: Tipo de estudo */}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={cn(
+                      "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                      tc.color === 'text-blue-500' ? "bg-blue-500/10 text-blue-600" :
+                      tc.color === 'text-primary' ? "bg-primary/10 text-primary" :
+                      tc.color === 'text-warning' ? "bg-warning/10 text-warning" :
+                      tc.color === 'text-destructive' ? "bg-destructive/10 text-destructive" :
+                      tc.color === 'text-success' ? "bg-success/10 text-success" :
+                      "bg-muted text-muted-foreground"
+                    )}>
+                      {tc.label}
+                    </span>
+                    {task.title.includes('⚠️') && (
+                      <span className="text-[9px] text-destructive font-bold">⚠️</span>
+                    )}
+                    {task.title.includes('✅') && (
+                      <span className="text-[9px] text-success font-bold">✅</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Tempo e status */}
-                <div className="shrink-0 text-right space-y-1">
+                <div className="shrink-0 flex flex-col items-end justify-between h-full py-0.5">
                   {isCompleted ? (
-                    <span className="text-[10px] font-bold text-success uppercase tracking-wider bg-success/10 px-2 py-1 rounded block">Feito</span>
+                    <span className="text-[10px] font-bold text-success uppercase tracking-wider bg-success/10 px-2 py-1 rounded">Feito</span>
                   ) : isDelayed ? (
-                    <span className="text-[10px] font-bold text-warning uppercase tracking-wider bg-warning/10 px-2 py-1 rounded block">Atrasado</span>
+                    <span className="text-[10px] font-bold text-warning uppercase tracking-wider bg-warning/10 px-2 py-1 rounded">Atrasado</span>
                   ) : (
-                    <span className="text-xs font-bold text-foreground/70 bg-muted px-2 py-1 rounded block">{task.planned_minutes}m</span>
+                    <span className="text-xs font-bold text-foreground/70 bg-muted px-2 py-1 rounded">{task.planned_minutes}m</span>
                   )}
                 </div>
               </button>
