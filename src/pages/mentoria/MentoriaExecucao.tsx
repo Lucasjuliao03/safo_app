@@ -347,16 +347,16 @@ export default function MentoriaExecucao() {
             // Matéria do banco
             const subjectName = task.subjects?.name || 'Instrução Geral';
             
-            // Extrair tema do título (ex: "DGEOP - DOUTRINA OPERACIONAL" ou "MTP 01 - BÁSICO")
+            // Extrair tema do título (formato: "Teoria: DGEOP" ou "Questões: DOUTRINA OPERACIONAL")
             let temaPrincipal = '';
-            let temaSecundario = '';
             
             if (task.title) {
-              // Separa por " - " ou "–" ou "—"
-              const parts = task.title.trim().split(/\s*[-–—]\s*/);
-              if (parts.length >= 1) {
-                temaPrincipal = parts[0].trim(); // Primeira parte (ex: DGEOP, MTP 01)
-                temaSecundario = parts.slice(1).join(' - ').replace(/⚠️|✅/g, '').trim(); // Resto (ex: DOUTRINA OPERACIONAL)
+              // Remove o prefixo do tipo (ex: "Teoria: " -> pega só "DGEOP")
+              const colonIdx = task.title.indexOf(':');
+              if (colonIdx > 0) {
+                temaPrincipal = task.title.substring(colonIdx + 1).replace(/⚠️|✅/g, '').trim();
+              } else {
+                temaPrincipal = task.title.replace(/⚠️|✅/g, '').trim();
               }
             }
 
@@ -385,7 +385,7 @@ export default function MentoriaExecucao() {
 
                 {/* Conteúdo - stack vertical */}
                 <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  {/* Linha 1: Tema principal (ex: DGEOP, MTP 01) */}
+                  {/* Linha 1: Tema (ex: DGEOP, DOUTRINA OPERACIONAL) */}
                   <p className={cn(
                     "text-sm font-bold text-foreground truncate", 
                     isCompleted && "text-muted-foreground line-through"
@@ -393,19 +393,13 @@ export default function MentoriaExecucao() {
                     {temaPrincipal}
                   </p>
                   
-                  {/* Linha 2: Subtema (ex: DOUTRINA OPERACIONAL) */}
-                  {temaSecundario && (
-                    <p className="text-xs text-muted-foreground truncate" title={temaSecundario}>
-                      {temaSecundario}
-                    </p>
-                  )}
+                  {/* Linha 2: Matéria */}
+                  <p className="text-xs text-muted-foreground truncate" title={subjectName}>
+                    {subjectName}
+                  </p>
                   
-                  {/* Linha 3: Matéria + Tipo de estudo */}
+                  {/* Linha 3: Tipo de estudo */}
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[9px] font-medium text-muted-foreground truncate max-w-[100px]">
-                      {subjectName}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground/50">•</span>
                     <span className={cn(
                       "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
                       tc.color === 'text-blue-500' ? "bg-blue-500/10 text-blue-600" :
@@ -418,7 +412,7 @@ export default function MentoriaExecucao() {
                       {tc.label}
                     </span>
                     {task.title.includes('⚠️') && (
-                      <span className="text-[9px] text-destructive font-bold">⚠️</span>
+                      <span className="text-[9px] text-destructive font-bold ml-1">⚠</span>
                     )}
                   </div>
                 </div>
