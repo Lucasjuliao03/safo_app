@@ -347,17 +347,18 @@ export default function MentoriaExecucao() {
             // Matéria do banco
             const subjectName = task.subjects?.name || 'Instrução Geral';
             
-            // Extrair tema do título (formato: "Teoria: DGEOP" ou "Questões: DOUTRINA OPERACIONAL")
+            // Extrair tema do título (formato: "Teoria: Legislação > ICCPM 01")
             let temaPrincipal = '';
             
             if (task.title) {
-              // Remove o prefixo do tipo (ex: "Teoria: " -> pega só "DGEOP")
+              // Remove o prefixo do tipo (ex: "Teoria: " -> pega só o resto)
+              // Depois pega só a última parte após ">" para remover caminho de matéria
               const colonIdx = task.title.indexOf(':');
-              if (colonIdx > 0) {
-                temaPrincipal = task.title.substring(colonIdx + 1).replace(/⚠️|✅/g, '').trim();
-              } else {
-                temaPrincipal = task.title.replace(/⚠️|✅/g, '').trim();
-              }
+              let raw = colonIdx > 0 ? task.title.substring(colonIdx + 1) : task.title;
+              raw = raw.replace(/⚠️|✅/g, '').trim();
+              // Pega a última parte após ">" (ex: "Legislação Institucional > ICCPM 01" -> "ICCPM 01")
+              const parts = raw.split('>');
+              temaPrincipal = parts[parts.length - 1].trim();
             }
 
             return (
