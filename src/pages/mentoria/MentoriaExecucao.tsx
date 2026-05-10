@@ -344,8 +344,21 @@ export default function MentoriaExecucao() {
             const tc = typeConfig[task.task_type] || typeConfig.theory;
             const TypeIcon = tc.icon;
 
-            // Extrair matéria do título (formato: "📖 Teoria: Matéria ⚠️")
+            // Extrair matéria do título
             const subjectName = task.subjects?.name || 'Instrução Geral';
+            
+            // Extrair tema do título (formato: "📖 Teoria: Matéria - Tema ⚠️")
+            let temaTitle = '';
+            if (task.title) {
+              // Tentar extrair o tema após a matéria
+              const parts = task.title.split(/[-–—]/);
+              if (parts.length > 1) {
+                temaTitle = parts.slice(1).join(' ').replace(/⚠️|✅/g, '').trim();
+              } else {
+                // Se não tem traço, pega o título todo menos a parte da matéria
+                temaTitle = task.title.replace(/📖|📝|🎯|📚|⚡/g, '').trim();
+              }
+            }
 
             return (
               <button
@@ -372,22 +385,20 @@ export default function MentoriaExecucao() {
 
                 {/* Conteúdo */}
                 <div className="flex-1 min-w-0">
-                  {/* Matéria - Tema em destaque */}
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 truncate bg-muted/50 w-fit px-1.5 rounded border border-border/40">
-                    {task.subjects?.name || 'Geral'}
-                    {task.title.includes('›') && ` — ${task.title.split('›')[1].split('⚠️')[0].split('✅')[0].trim()}`}
+                  {/* Tema (primeira linha) */}
+                  <p className={cn("text-sm font-semibold text-foreground truncate leading-tight", isCompleted && "text-muted-foreground line-through")}>
+                    {temaTitle || task.title || tc.label}
                   </p>
-                  {/* Tipo da atividade */}
-                  <p className={cn("font-semibold text-sm leading-tight", isCompleted && "text-muted-foreground line-through")}>
+                  
+                  {/* Matéria (segunda linha) */}
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {subjectName}
+                  </p>
+                  
+                  {/* Forma de estudo (terceira linha) */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mt-1">
                     {tc.label}
                   </p>
-                  {/* Badge de prioridade se houver */}
-                  {(task.title.includes('⚠️') || task.title.includes('✅')) && (
-                    <p className="text-[10px] mt-0.5">
-                      {task.title.includes('⚠️') ? <span className="text-destructive font-semibold">⚠️ Prioridade Alta</span> :
-                                                    <span className="text-success font-semibold">✅ Manutenção</span>}
-                    </p>
-                  )}
                 </div>
 
                 {/* Tempo e status */}
