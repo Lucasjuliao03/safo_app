@@ -539,16 +539,39 @@ export async function adminSaveTasks(tasks: Omit<MentoriaTarefa, 'id' | 'created
 }
 
 export async function getAllStudentTasks(userId: string) {
-  const { data, error } = await supabase
-    .from('mentoria_tarefas_diarias')
-    .select(`*, subjects(name)`)
-    .eq('user_id', userId)
-    .order('planned_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(100);
+  if (!userId) return [];
+  
+  // Buscar todas as tarefas com paginação (o Supabase limita a 1000 por request)
+  let allTasks: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  
+  while (true) {
+    const { data, error } = await supabase
+      .from('mentoria_tarefas_diarias')
+      .select(`*, subjects(name)`)
+      .eq('user_id', userId)
+      .order('planned_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
 
-  if (error) throw error;
-  return data || [];
+    if (error) {
+      console.error('[getAllStudentTasks] Error:', error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) break;
+    
+    allTasks = [...allTasks, ...data];
+    
+    if (data.length < pageSize) break;
+    page++;
+  }
+
+  console.log('[getAllStudentTasks] Total tasks fetched:', allTasks.length);
+  console.log('[getAllStudentTasks] Sample task:', allTasks[0]);
+  
+  return allTasks || [];
 }
 
 export async function registrarIntervencao(userId: string, mentorId: string, reason: string, action_taken: string) {

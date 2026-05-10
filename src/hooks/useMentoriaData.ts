@@ -270,7 +270,9 @@ export function useAdminStudentTasks(userId: string | undefined) {
   return useQuery({
     queryKey: ['admin_mentoring_tasks', userId],
     queryFn: () => userId ? mentoriaService.getAllStudentTasks(userId) : [],
-    enabled: !!userId
+    enabled: !!userId,
+    staleTime: 0, // Forçar dados frescos
+    refetchOnMount: true,
   });
 }
 
