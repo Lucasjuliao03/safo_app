@@ -346,13 +346,26 @@ export default function MentoriaExecucao() {
 
             // Matéria do banco
             const subjectName = task.subjects?.name || 'Instrução Geral';
+            
+            // Extrair tema do título (ex: "DGEOP - DOUTRINA OPERACIONAL" ou "MTP 01 - BÁSICO")
+            let temaPrincipal = '';
+            let temaSecundario = '';
+            
+            if (task.title) {
+              // Separa por " - " ou "–" ou "—"
+              const parts = task.title.trim().split(/\s*[-–—]\s*/);
+              if (parts.length >= 1) {
+                temaPrincipal = parts[0].trim(); // Primeira parte (ex: DGEOP, MTP 01)
+                temaSecundario = parts.slice(1).join(' - ').replace(/⚠️|✅/g, '').trim(); // Resto (ex: DOUTRINA OPERACIONAL)
+              }
+            }
 
             return (
               <button
                 key={task.id}
                 onClick={() => handleOpenTask(task)}
                 className={cn(
-                  "w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-all active:scale-[0.98]",
+                  "w-full flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all active:scale-[0.98]",
                   isCompleted ? "bg-success/5 border-success/30 shadow-sm" :
                   isDelayed   ? "bg-warning/5 border-warning/30" :
                                 "bg-card border-border hover:border-primary/40 shadow-sm"
@@ -360,7 +373,7 @@ export default function MentoriaExecucao() {
               >
                 {/* Ícone do tipo */}
                 <div className={cn(
-                  "flex items-center justify-center w-9 h-9 rounded-lg border shrink-0",
+                  "flex items-center justify-center w-8 h-8 rounded-lg border shrink-0",
                   isCompleted ? "bg-success/20 border-success/30 text-success" :
                   isDelayed   ? "bg-warning/20 border-warning/30 text-warning" :
                                 "bg-muted/60 border-border"
@@ -372,21 +385,27 @@ export default function MentoriaExecucao() {
 
                 {/* Conteúdo - stack vertical */}
                 <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  {/* Linha 1: Tema (título da tarefa) */}
+                  {/* Linha 1: Tema principal (ex: DGEOP, MTP 01) */}
                   <p className={cn(
-                    "text-sm font-semibold text-foreground truncate", 
+                    "text-sm font-bold text-foreground truncate", 
                     isCompleted && "text-muted-foreground line-through"
-                  )} title={task.title}>
-                    {task.title}
+                  )} title={temaPrincipal}>
+                    {temaPrincipal}
                   </p>
                   
-                  {/* Linha 2: Matéria */}
-                  <p className="text-xs text-muted-foreground truncate" title={subjectName}>
-                    {subjectName}
-                  </p>
+                  {/* Linha 2: Subtema (ex: DOUTRINA OPERACIONAL) */}
+                  {temaSecundario && (
+                    <p className="text-xs text-muted-foreground truncate" title={temaSecundario}>
+                      {temaSecundario}
+                    </p>
+                  )}
                   
-                  {/* Linha 3: Tipo de estudo */}
+                  {/* Linha 3: Matéria + Tipo de estudo */}
                   <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-medium text-muted-foreground truncate max-w-[100px]">
+                      {subjectName}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground/50">•</span>
                     <span className={cn(
                       "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
                       tc.color === 'text-blue-500' ? "bg-blue-500/10 text-blue-600" :
@@ -400,9 +419,6 @@ export default function MentoriaExecucao() {
                     </span>
                     {task.title.includes('⚠️') && (
                       <span className="text-[9px] text-destructive font-bold">⚠️</span>
-                    )}
-                    {task.title.includes('✅') && (
-                      <span className="text-[9px] text-success font-bold">✅</span>
                     )}
                   </div>
                 </div>
