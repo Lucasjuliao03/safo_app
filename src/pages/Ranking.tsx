@@ -10,8 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRanking, useWeeklyChallenge, useChallengeParticipants } from '@/hooks/useRanking';
 import type { RankingUser } from '@/hooks/useRanking';
 import { useUserProductivity } from '@/hooks/useStudyData';
-import { Switch } from '@/components/ui/switch';
-import { compareWithDemoRanking, DEMO_PROFILE_COUNT } from '@/lib/rankingDemo';
+import { compareWithDemoRanking } from '@/lib/rankingDemo';
 
 const EMPTY_RANKING: RankingUser[] = [];
 
@@ -21,13 +20,11 @@ export default function RankingPage() {
   const rankingType = courseId ? 'course' : 'general';
   
   const [rankingPeriod, setRankingPeriod] = useState<'weekly' | 'monthly' | 'all'>('weekly');
-  const [showDemoProfiles, setShowDemoProfiles] = useState(true);
   
   const { data: ranking = EMPTY_RANKING, isLoading, isError } = useRanking(user?.id, courseId, rankingPeriod, rankingType);
-  const demoEnabled = showDemoProfiles && !!courseId;
-  const displayedRanking = useMemo(() => demoEnabled && courseId
+  const displayedRanking = useMemo(() => courseId
     ? compareWithDemoRanking(ranking, courseId, rankingPeriod)
-    : ranking, [demoEnabled, ranking, courseId, rankingPeriod]);
+    : ranking, [ranking, courseId, rankingPeriod]);
   const { data: challenge } = useWeeklyChallenge(user?.id, courseId);
   const { data: participants = [] } = useChallengeParticipants(challenge?.id, user?.id);
   const { data: todayProd } = useUserProductivity(user?.id);
@@ -103,25 +100,6 @@ export default function RankingPage() {
 
         {activeTab === 'ranking' ? (
           <div className="space-y-4">
-            {courseId && (
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <label htmlFor="ranking-demo" className="text-sm font-medium cursor-pointer">
-                    Comparar com {DEMO_PROFILE_COUNT} perfis virtuais
-                  </label>
-                  <Switch
-                    id="ranking-demo"
-                    checked={showDemoProfiles}
-                    onCheckedChange={setShowDemoProfiles}
-                    aria-describedby="ranking-demo-description"
-                  />
-                </div>
-                <p id="ranking-demo-description" className="mt-2 text-xs text-muted-foreground">
-                  Perfis fictícios com metas fixas para comparar seu progresso neste curso.
-                  A comparação não altera sua posição no ranking oficial.
-                </p>
-              </div>
-            )}
             {isLoading ? (
               <p role="status" className="py-8 text-center text-sm text-muted-foreground">Carregando ranking...</p>
             ) : isError ? (
@@ -130,7 +108,7 @@ export default function RankingPage() {
               <RankingCard
                 ranking={displayedRanking}
                 currentUserId={user?.id}
-                title={demoEnabled ? 'Comparação com perfis virtuais' : periodTitles[rankingPeriod]}
+                title={periodTitles[rankingPeriod]}
                 showPodio={true}
                 activePeriod={rankingPeriod}
                 onPeriodChange={setRankingPeriod}

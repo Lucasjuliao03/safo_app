@@ -33,35 +33,34 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('transparent ranking comparison', () => {
-  it.each([7, 87291])('shows 78 labelled samples by default for existing or new course %s, with an option to hide them', courseId => {
+  it.each([7, 87291])('shows course %s as Ranking simulado with 78 samples and no per-profile labels or selector', courseId => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: 'real', courseId } } as ReturnType<typeof useAuth>);
     render(<MemoryRouter><RankingPage /></MemoryRouter>);
-    const toggle = screen.getByRole('switch', { name: 'Comparar com 78 perfis virtuais' });
-    expect(toggle).toBeChecked();
-    expect(screen.getAllByText('Perfil virtual')).toHaveLength(78);
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByText('Perfil virtual')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('img')).toHaveLength(79);
     expect(screen.getByText('Participante real')).toBeInTheDocument();
-    expect(screen.getByText(/1 participante real nesta lista e 78 perfis virtuais/)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Comparação com perfis virtuais' })).toBeInTheDocument();
+    expect(screen.queryByText(/Comparação ilustrativa|Os perfis fictícios/)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ranking simulado' })).toBeInTheDocument();
 
-    fireEvent.click(toggle);
-    expect(toggle).not.toBeChecked();
-    expect(screen.queryAllByText('Perfil virtual')).toHaveLength(0);
-
-    fireEvent.click(toggle);
-    expect(toggle).toBeChecked();
-    expect(screen.getAllByText('Perfil virtual')).toHaveLength(78);
+    const profile = createDemoRanking(String(courseId), 'weekly')[0];
+    expect(screen.getByRole('img', { name: profile.userName })).toHaveAttribute('src', profile.userAvatar);
 
     fireEvent.click(screen.getByRole('button', { name: 'Mensal' }));
-    expect(screen.getAllByText('Perfil virtual')).toHaveLength(78);
-    fireEvent.click(toggle);
-    expect(screen.queryAllByText('Perfil virtual')).toHaveLength(0);
-    expect(screen.getAllByRole('heading', { name: 'Ranking Mensal' })).toHaveLength(2);
+    expect(screen.getByRole('heading', { name: 'Ranking simulado' })).toBeInTheDocument();
+    expect(screen.getAllByRole('img')).toHaveLength(79);
+    expect(screen.getByRole('img', { name: profile.userName })).toHaveAttribute('src', profile.userAvatar);
+    fireEvent.click(screen.getByRole('button', { name: 'Geral' }));
+    expect(screen.getByRole('heading', { name: 'Ranking simulado' })).toBeInTheDocument();
+    expect(screen.getAllByRole('img')).toHaveLength(79);
+    expect(screen.getByRole('img', { name: profile.userName })).toHaveAttribute('src', profile.userAvatar);
   });
 
   it('keeps sample controls unavailable without a selected course', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: 'real' } } as ReturnType<typeof useAuth>);
     render(<MemoryRouter><RankingPage /></MemoryRouter>);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Ranking simulado' })).not.toBeInTheDocument();
     expect(screen.queryAllByText('Perfil virtual')).toHaveLength(0);
   });
 
@@ -79,13 +78,20 @@ describe('transparent ranking comparison', () => {
     expect(screen.queryAllByText('Perfil virtual')).toHaveLength(0);
   });
 
-  it('identifies samples in the compact ranking too', () => {
+  it('uses only Ranking simulado to identify the compact simulated ranking', () => {
     render(<MiniRanking ranking={createDemoRanking('7', 'weekly').slice(0, 5)} />);
-    expect(screen.getAllByText('Perfil virtual')).toHaveLength(5);
+    expect(screen.getByText('Ranking simulado')).toBeInTheDocument();
+    expect(screen.queryByText('Perfil virtual')).not.toBeInTheDocument();
+    for (const profile of createDemoRanking('7', 'weekly').slice(0, 5)) {
+      expect(screen.getByText(profile.userName)).toBeInTheDocument();
+    }
   });
 
-  it('renders every entry with labels when the podium is disabled', () => {
+  it('renders every entry with only the Ranking simulado title when the podium is disabled', () => {
     render(<RankingCard ranking={createDemoRanking('7', 'weekly')} showPodio={false} />);
-    expect(screen.getAllByText('Perfil virtual')).toHaveLength(78);
+    expect(screen.getByRole('heading', { name: 'Ranking simulado' })).toBeInTheDocument();
+    expect(screen.getAllByRole('img')).toHaveLength(78);
+    expect(screen.queryByText('Perfil virtual')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Comparação ilustrativa|Os perfis fictícios/)).not.toBeInTheDocument();
   });
 });

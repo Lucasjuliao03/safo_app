@@ -1,8 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { RankingUser } from '@/hooks/useRanking';
 import { compareWithDemoRanking, createDemoRanking, DEMO_PROFILE_COUNT } from '@/lib/rankingDemo';
 
 describe('fixed demonstration benchmarks', () => {
+  it('assigns fixed avatars from the real system catalog, with existing image files', () => {
+    const manifest: { name: string; ext: string }[] = JSON.parse(
+      readFileSync(resolve('public/avatar/manifest.json'), 'utf8'),
+    );
+    const availableUrls = new Set(manifest.map(avatar => `/avatar/${avatar.name}.${avatar.ext}`));
+    const profiles = createDemoRanking('7', 'weekly');
+    const avatars = profiles.map(profile => profile.userAvatar);
+    expect(new Set(avatars).size).toBeGreaterThan(12);
+    for (const avatar of avatars) {
+      expect(availableUrls.has(avatar)).toBe(true);
+      expect(existsSync(resolve('public', avatar.slice(1)))).toBe(true);
+      expect(avatar).not.toBe('/avatar/default.svg');
+    }
+    expect(createDemoRanking('7', 'monthly').map(profile => profile.userAvatar)).toEqual(avatars);
+    expect(createDemoRanking('7', 'all').map(profile => profile.userAvatar)).toEqual(avatars);
+    expect(createDemoRanking('87291', 'weekly').map(profile => profile.userAvatar)).toEqual(avatars);
+  });
+
   it.each(['1', '2', '87291'])('provides 78 distinct fictional profiles for course %s', courseId => {
     const profiles = createDemoRanking(courseId, 'weekly');
     expect(DEMO_PROFILE_COUNT).toBe(78);

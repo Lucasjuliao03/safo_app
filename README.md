@@ -25,7 +25,7 @@ O primeiro comando executa TypeScript, ESLint, testes automatizados e build de p
 
 ## Comparação de estudo no ranking
 
-Na página de ranking de cada curso, a comparação com 78 perfis fictícios, identificados como "Perfil virtual", aparece por padrão. O aluno pode ocultar esses perfis pelo controle de comparação. Os nomes e as estatísticas são determinísticos por curso e período, sem mudar em atualizações ou visitas futuras. Os perfis virtuais têm no máximo 430 pontos no geral, 180 no mensal e 60 no semanal, com atividades coerentes com a fórmula de pontuação. Esses limites não se aplicam aos alunos reais. Funciona automaticamente também para cursos novos, sem gravar contas, atividades ou posições no banco; o ranking oficial continua usando apenas participantes reais.
+Na página de ranking de cada curso, a comparação com 78 perfis fictícios aparece automaticamente com o título "Ranking simulado", sem seletor, aviso explicativo ou rótulos individuais. Cada perfil tem um avatar fixo escolhido da lista de avatares do sistema, preservado entre cursos e períodos. Os nomes e as estatísticas são determinísticos por curso e período, sem mudar em atualizações ou visitas futuras. Os perfis virtuais têm no máximo 430 pontos no geral, 180 no mensal e 60 no semanal, com atividades coerentes com a fórmula de pontuação. Esses limites não se aplicam aos alunos reais. Funciona automaticamente também para cursos novos, sem gravar contas, atividades ou posições no banco; o ranking oficial continua usando apenas participantes reais.
 
 ## Arquitetura de segurança
 

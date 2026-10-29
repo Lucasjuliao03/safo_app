@@ -19,6 +19,17 @@ const DEMO_NAMES = [
   'Natália Dias', 'Wesley', 'helo.m', 'Chico', 'Monique', 'Arthur Lima',
 ] as const;
 
+// Existing options from public/avatar/manifest.json. Selection is tied to the
+// fictional identity, so the same profile keeps its avatar in every course.
+const DEMO_AVATARS = [
+  'saude1', 'saude2', 'saude3', 'saude4',
+  'choque1', 'choque2', 'choque3', 'choque4',
+  'bope1', 'bope2', 'bope3', 'bope4',
+  'pog1', 'pog2', 'pog3', 'pog4',
+  'comaf1', 'comaf2', 'comaf3', 'comaf4',
+  'velado1', 'velado2', 'velado3', 'velado4',
+] as const;
+
 export const DEMO_PROFILE_COUNT = DEMO_NAMES.length;
 
 function hash(value: string): number {
@@ -72,6 +83,7 @@ export function createDemoRanking(courseId: string, period: RankingPeriod): Rank
       positionChange: 0,
       userId: `demo:${numericCourseId}:${index + 1}`,
       userName,
+      userAvatar: `/avatar/${DEMO_AVATARS[hash(`avatar:${index + 1}`) % DEMO_AVATARS.length]}.png`,
       courseId: numericCourseId,
       questionsTotal,
       questionsCorrect,
