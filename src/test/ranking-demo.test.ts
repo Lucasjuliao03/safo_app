@@ -11,7 +11,7 @@ describe('fixed demonstration benchmarks', () => {
     expect(new Set(profiles.map(profile => profile.userName)).size).toBe(78);
     expect(profiles.every(profile => profile.isDemo && !profile.isCurrentUser)).toBe(true);
     expect(profiles.every(profile => profile.courseId === Number(courseId))).toBe(true);
-    expect(new Set(profiles.map(profile => profile.questionsTotal)).size).toBeGreaterThan(40);
+    expect(new Set(profiles.map(profile => profile.finalScore)).size).toBeGreaterThan(5);
   });
 
   it.each(['weekly', 'monthly', 'all'] as const)('keeps %s statistics fixed across time and repeated visits', period => {
@@ -37,6 +37,29 @@ describe('fixed demonstration benchmarks', () => {
         expect(profile.accuracy).toBeLessThanOrEqual(100);
         expect(profile.finalScore).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it.each(['1', '2', '7', '12', '87291'])('limits virtual scores and activity to smaller periods for course %s', courseId => {
+    const weekly = createDemoRanking(courseId, 'weekly');
+    const monthly = createDemoRanking(courseId, 'monthly');
+    const all = createDemoRanking(courseId, 'all');
+    for (const [profiles, cap] of [[weekly, 60], [monthly, 180], [all, 430]] as const) {
+      for (const profile of profiles) {
+        expect(profile.finalScore).toBeLessThanOrEqual(cap);
+        expect(profile.qualityScore).toBe(Math.max(0,
+          profile.questionsCorrect * 10 + profile.flashcardsTotal * 8
+          + profile.summariesRead * 3 - profile.questionsWrong * 5,
+        ));
+        expect(profile.volumeScore).toBe((profile.questionsTotal + profile.flashcardsTotal + profile.summariesRead) * 2);
+        expect(profile.finalScore).toBe(profile.qualityScore + profile.consistencyScore + profile.volumeScore);
+      }
+    }
+    for (let index = 0; index < 78; index++) {
+      expect(weekly[index].finalScore).toBeLessThan(monthly[index].finalScore);
+      expect(monthly[index].finalScore).toBeLessThan(all[index].finalScore);
+      expect(weekly[index].questionsTotal).toBeLessThan(monthly[index].questionsTotal);
+      expect(monthly[index].questionsTotal).toBeLessThan(all[index].questionsTotal);
     }
   });
 
@@ -72,5 +95,14 @@ describe('fixed demonstration benchmarks', () => {
     expect(comparison.findIndex(profile => profile.userId === 'real'))
       .toBeLessThan(comparison.findIndex(profile => profile.userId === sample.userId));
     expect(compareWithDemoRanking([real], '7', 'weekly')).toEqual(comparison);
+  });
+
+  it('leaves real participants free to earn points above the virtual profile caps', () => {
+    const real = { ...createDemoRanking('7', 'all')[0], userId: 'real', isDemo: false, finalScore: 1000 };
+    for (const period of ['weekly', 'monthly', 'all'] as const) {
+      const ranking = compareWithDemoRanking([real], '7', period);
+      expect(ranking[0].userId).toBe('real');
+      expect(ranking[0].finalScore).toBe(1000);
+    }
   });
 });

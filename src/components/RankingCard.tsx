@@ -86,7 +86,7 @@ export function RankingCard({
 
         {demoCount > 0 && (
           <p className="mb-3 text-xs text-amber-800 bg-amber-50 rounded-lg p-3">
-            Comparação ilustrativa: {ranking.length - demoCount} {ranking.length - demoCount === 1 ? 'participante real' : 'participantes reais'} nesta lista e {demoCount} perfis de demonstração.
+            Comparação ilustrativa: {ranking.length - demoCount} {ranking.length - demoCount === 1 ? 'participante real' : 'participantes reais'} nesta lista e {demoCount} perfis virtuais.
             {' '}Os perfis fictícios têm pontuações fixas e não representam usuários cadastrados.
           </p>
         )}
@@ -123,7 +123,7 @@ export function RankingCard({
                 <p className="text-sm font-semibold text-gray-800 mt-2 max-w-[80px] truncate text-center">
                   {podium[1].userName}
                 </p>
-                {podium[1].isDemo && <DemoBadge />}
+                {podium[1].isDemo && <VirtualProfileBadge />}
                 <p className="text-xs font-bold mt-1" style={{ color: COLORS.silver }}>{Math.round(podium[1].finalScore)}</p>
               </div>
             )}
@@ -139,7 +139,7 @@ export function RankingCard({
                 <p className="text-base font-bold text-gray-900 mt-2 max-w-[100px] truncate text-center">
                   {podium[0].userName}
                 </p>
-                {podium[0].isDemo && <DemoBadge />}
+                {podium[0].isDemo && <VirtualProfileBadge />}
                 <p className="text-sm font-black mt-1" style={{ color: COLORS.gold }}>{Math.round(podium[0].finalScore)}</p>
               </div>
             )}
@@ -152,7 +152,7 @@ export function RankingCard({
                 <p className="text-sm font-semibold text-gray-800 mt-2 max-w-[80px] truncate text-center">
                   {podium[2].userName}
                 </p>
-                {podium[2].isDemo && <DemoBadge />}
+                {podium[2].isDemo && <VirtualProfileBadge />}
                 <p className="text-xs font-bold mt-1" style={{ color: COLORS.bronze }}>{Math.round(podium[2].finalScore)}</p>
               </div>
             )}
@@ -192,7 +192,7 @@ export function RankingCard({
                 {user.userName}
                 {user.isCurrentUser && <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Você</span>}
               </p>
-              {user.isDemo && <DemoBadge />}
+              {user.isDemo && <VirtualProfileBadge />}
               <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
                 <span className="flex items-center gap-1">
                   <Target className="h-3 w-3" />
@@ -258,8 +258,8 @@ export function RankingCard({
   );
 }
 
-function DemoBadge() {
-  return <span className="inline-block text-[10px] font-medium text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">Demonstração</span>;
+function VirtualProfileBadge() {
+  return <span className="inline-block text-[10px] font-medium text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">Perfil virtual</span>;
 }
 
 // Mini versão do ranking para sidebar
@@ -295,7 +295,7 @@ export function MiniRanking({ ranking, currentUserId }: { ranking: RankingUser[]
               )}>
                 {user.userName}
               </p>
-              {user.isDemo && <DemoBadge />}
+              {user.isDemo && <VirtualProfileBadge />}
             </div>
             <span className="text-xs font-bold text-gray-600">{Math.round(user.finalScore)}</span>
           </div>

@@ -107,7 +107,7 @@ export default function RankingPage() {
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
                   <label htmlFor="ranking-demo" className="text-sm font-medium cursor-pointer">
-                    Comparar com {DEMO_PROFILE_COUNT} perfis de demonstração
+                    Comparar com {DEMO_PROFILE_COUNT} perfis virtuais
                   </label>
                   <Switch
                     id="ranking-demo"
@@ -130,7 +130,7 @@ export default function RankingPage() {
               <RankingCard
                 ranking={displayedRanking}
                 currentUserId={user?.id}
-                title={demoEnabled ? 'Comparação com demonstração' : periodTitles[rankingPeriod]}
+                title={demoEnabled ? 'Comparação com perfis virtuais' : periodTitles[rankingPeriod]}
                 showPodio={true}
                 activePeriod={rankingPeriod}
                 onPeriodChange={setRankingPeriod}

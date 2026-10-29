@@ -34,15 +34,33 @@ export function createDemoRanking(courseId: string, period: RankingPeriod): Rank
   const numericCourseId = Number(courseId);
   if (!Number.isSafeInteger(numericCourseId) || numericCourseId <= 0) return [];
 
-  const multiplier = { weekly: 1, monthly: 3, all: 8 }[period];
   return DEMO_NAMES.map((userName, index) => {
     const seed = `${numericCourseId}:${index + 1}`;
-    const questionsTotal = (8 + hash(`${seed}:questions`) % 253) * multiplier;
+    // Even with every question correct, these activity bounds yield at most
+    // 60 weekly, 180 monthly and 430 overall points under the real score formula.
+    const weekly = {
+      questionsTotal: 1 + hash(`${seed}:questions`) % 3,
+      flashcardsTotal: hash(`${seed}:flashcards`) % 2,
+      summariesRead: hash(`${seed}:summaries`) % 2,
+      daysStudied: 1 + hash(`${seed}:days`) % 3,
+    };
+    const monthly = {
+      questionsTotal: weekly.questionsTotal * 3 + hash(`${seed}:monthly:questions`) % 2,
+      flashcardsTotal: weekly.flashcardsTotal + hash(`${seed}:monthly:flashcards`) % 3,
+      summariesRead: weekly.summariesRead + hash(`${seed}:monthly:summaries`) % 3,
+      daysStudied: weekly.daysStudied + hash(`${seed}:monthly:days`) % 3,
+    };
+    const all = {
+      questionsTotal: monthly.questionsTotal * 2 + hash(`${seed}:all:questions`) % 9,
+      flashcardsTotal: monthly.flashcardsTotal + hash(`${seed}:all:flashcards`) % 3,
+      summariesRead: monthly.summariesRead + hash(`${seed}:all:summaries`) % 2,
+      daysStudied: monthly.daysStudied + hash(`${seed}:all:days`) % 4,
+    };
+    const activity = { weekly, monthly, all }[period];
+    const { questionsTotal, flashcardsTotal, summariesRead } = activity;
     const questionsCorrect = Math.round(questionsTotal * (48 + hash(`${seed}:accuracy`) % 49) / 100);
     const questionsWrong = questionsTotal - questionsCorrect;
-    const flashcardsTotal = (hash(`${seed}:flashcards`) % 91) * multiplier;
-    const summariesRead = (hash(`${seed}:summaries`) % 16) * multiplier;
-    const daysStudied = (1 + hash(`${seed}:days`) % 7) * multiplier;
+    const daysStudied = Math.min(activity.daysStudied, questionsTotal + flashcardsTotal + summariesRead);
     const qualityScore = Math.max(0,
       questionsCorrect * 10 + flashcardsTotal * 8 + summariesRead * 3 - questionsWrong * 5,
     );
