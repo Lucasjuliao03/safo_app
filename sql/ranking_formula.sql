@@ -89,7 +89,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- View simples para ranking
-CREATE OR REPLACE VIEW v_ranking AS
+CREATE OR REPLACE VIEW v_ranking
+WITH (security_invoker = true) AS
 SELECT 
   r.user_id,
   r.course_id,

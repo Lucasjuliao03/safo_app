@@ -65,14 +65,14 @@ export function useUserStreakStats(userId: string | undefined) {
 
       // Calcular sequência atual (dias consecutivos)
       let currentStreak = 0;
-      let checkDate = hasActivityToday ? todayStr : yesterdayStr;
+      const checkDate = hasActivityToday ? todayStr : yesterdayStr;
       
       // Se não tem atividade hoje nem ontem, sequência é 0
       if (!hasActivityToday && !activityDates.has(yesterdayStr)) {
         currentStreak = 0;
       } else {
         // Contar dias consecutivos a partir de hoje (se tem atividade) ou ontem
-        let currentDate = new Date(checkDate);
+        const currentDate = new Date(checkDate);
         
         // Se estamos começando por ontem, não conta hoje ainda
         if (!hasActivityToday) {

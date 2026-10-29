@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { StudyLoadError } from "@/components/StudyLoadError";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useMentoriaStatus,
@@ -145,7 +146,7 @@ function OnboardingWizard({
   const reDiagMutation = useReDiagnostico();
   const { data: courses = [] } = useCourses();
   const courseId = user?.courseId ? String(user.courseId) : null;
-  const { data: subjects = [] } = useSubjects(courseId);
+  const { data: subjects = [], isLoading: loadingSubjects, error: subjectsError } = useSubjects(courseId);
 
   const subjectNames = subjects.map((s: any) => s.name);
   const currentCourse = courses.find((c: any) => String(c.id) === courseId);
@@ -169,7 +170,7 @@ function OnboardingWizard({
       const [y, m, d] = form.exam_date.split('-');
       setField("exam_date_display", `${d}/${m}/${y}`);
     }
-  }, [form.exam_date]);
+  }, [form.exam_date, form.exam_date_display]);
 
   const toggleDay = (day: number) => {
     const days = form.study_days_of_week;
@@ -193,6 +194,14 @@ function OnboardingWizard({
 
   const handleSubmit = async () => {
     if (applyMutation.isPending || reDiagMutation.isPending) return;
+    if (loadingSubjects) {
+      toast.error('Aguarde o carregamento das matérias do seu curso.');
+      return;
+    }
+    if (subjectsError) {
+      toast.error(subjectsError.message);
+      return;
+    }
 
     const diagPayload = {
       objective:                      form.objective,
@@ -662,8 +671,8 @@ export default function MentoriaDashboard() {
   const { user } = useAuth();
   const [showReDiag, setShowReDiag] = useState(false);
 
-  const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);
-  const { data: diagnostico, isLoading: loadingDiag } = useMentoriaDiagnostico(user?.id);
+  const { data: mentoria, isLoading: loadingStatus, error: statusError } = useMentoriaStatus(user?.id);
+  const { data: diagnostico, isLoading: loadingDiag, error: diagnosisError } = useMentoriaDiagnostico(user?.id);
   const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(user?.id);
   const { data: intervencoes } = useStudentInterventions(user?.id);
 
@@ -672,6 +681,9 @@ export default function MentoriaDashboard() {
   const endOfMonth = new Date(dateStr.getFullYear(), dateStr.getMonth() + 1, 0).toISOString().split('T')[0];
   const { data: monthTasks = [] } = useMentoriaTasks(user?.id, startOfMonth, endOfMonth);
 
+  if (statusError || diagnosisError) {
+    return <AppLayout><StudyLoadError error={statusError || diagnosisError} /></AppLayout>;
+  }
   if (loadingStatus || loadingDiag || loadingEst) {
     return (
       <AppLayout>
@@ -711,7 +723,7 @@ export default function MentoriaDashboard() {
   }
 
   // Onboarding inicial: sem mentoria ou sem plano gerado
-  if (!mentoria || mentoria.status !== 'active') {
+  if (!mentoria || mentoria.status !== 'active' || !diagnostico) {
     return <OnboardingWizard user={user} onComplete={() => {}} />;
   }
 

@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import * as XLSX from "xlsx";
 import { Download, UploadCloud, X, CheckCircle, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminSubjects, useAdminTopics, useBulkCreateQuestions } from "@/hooks/useAdminData";
@@ -33,8 +32,9 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
   const { data: topics = [] } = useAdminTopics();
   const bulkCreate = useBulkCreateQuestions();
 
-  const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([
+  const handleDownloadTemplate = async () => {
+    const { default: ExcelJS } = await import("exceljs");
+    const rows = [
       {
         ORIGEM: "CESPE",
         MATERIA: "Geografia",
@@ -65,11 +65,21 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
         JUSTIFICATIVA: "Fato comprovado.",
         DIFICULDADE: "fácil"
       }
-    ]);
-    
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Modelo");
-    XLSX.writeFile(wb, "Modelo_Importacao_Questoes.xlsx");
+    ];
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Modelo");
+    worksheet.columns = Object.keys(rows[0]).map((key) => ({ header: key, key, width: 22 }));
+    worksheet.addRows(rows);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "Modelo_Importacao_Questoes.xlsx";
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,20 +88,32 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
     setFile(selected);
     
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json<any>(ws);
-        
+        const { default: ExcelJS } = await import("exceljs");
+        const buffer = evt.target?.result;
+        if (!(buffer instanceof ArrayBuffer)) throw new Error("Arquivo inválido");
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) throw new Error("Planilha vazia");
+        const headers = (worksheet.getRow(1).values as unknown[]).slice(1).map((value) => String(value ?? "").trim());
+        const data: Record<string, unknown>[] = [];
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const item: Record<string, unknown> = {};
+          headers.forEach((header, index) => {
+            const cell = row.getCell(index + 1);
+            item[header] = cell.text;
+          });
+          if (Object.values(item).some((value) => String(value).trim())) data.push(item);
+        });
         validateAndParse(data);
       } catch (err) {
         setErrors(["Erro ao ler arquivo. Certifique-se que é um formato XLSX válido."]);
       }
     };
-    reader.readAsBinaryString(selected);
+    reader.readAsArrayBuffer(selected);
   };
 
   const validateAndParse = (rows: any[]) => {
@@ -109,7 +131,7 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
       const statement = preserveExcelText(row.ENUNCIADO);
       
       // Garantir que o gabarito seja extraído corretamente
-      let corRaw = row.CORRETA;
+      const corRaw = row.CORRETA;
       let cor = "";
       
       // Tratar diferentes tipos de dados vindos do Excel
@@ -193,11 +215,11 @@ export function AdminQuestionImport({ onClose }: AdminQuestionImportProps) {
 
     try {
       const payload = [];
-      let localSubjects = [...subjects];
-      let localTopics = [...topics];
+      const localSubjects = [...subjects];
+      const localTopics = [...topics];
 
       const { data: boardsData } = await supabase.from('exam_boards').select('id, name');
-      let localBoards = boardsData || [];
+      const localBoards = boardsData || [];
 
       for (const q of parsedData) {
         let subj = localSubjects.find(s => normalizeName(s.name) === normalizeName(q._subjectText));

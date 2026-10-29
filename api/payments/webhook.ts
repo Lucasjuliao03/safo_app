@@ -1,141 +1,118 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@supabase/supabase-js";
-import { MercadoPagoConfig } from "mercadopago";
+import { applyApiSecurityHeaders, isUuid } from "../../server/httpSecurity.js";
+import { getSupabaseAdmin } from "../../server/supabaseAdmin.js";
 
 const STATUS_MAP: Record<string, string> = {
-  approved:     "approved",
-  pending:      "pending",
-  in_process:   "pending",
-  authorized:   "pending",
-  rejected:     "rejected",
-  cancelled:    "cancelled",
-  refunded:     "refunded",
-  charged_back: "charged_back",
+  approved: "approved", pending: "pending", in_process: "pending", authorized: "pending",
+  rejected: "rejected", cancelled: "cancelled", refunded: "refunded", charged_back: "charged_back",
 };
 
+interface Notification { id?: string | number; type?: string; topic?: string; data?: { id?: string | number } }
+interface Payment {
+  id: number; status?: string; status_detail?: string; external_reference?: string;
+  transaction_amount?: number; currency_id?: string; live_mode?: boolean; collector_id?: number;
+  order?: { id?: string | number }; date_approved?: string;
+}
+function headerValue(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+export function validateMercadoPagoSignature(
+  signatureHeader: string, requestId: string, dataId: string, secret: string,
+): boolean {
+  const parts = Object.fromEntries(signatureHeader.split(",").map((part) => part.trim().split("=", 2)));
+  if (!parts.ts || !parts.v1 || !/^[a-f0-9]{64}$/i.test(parts.v1)) return false;
+  const manifest = `${dataId ? `id:${dataId.toLowerCase()};` : ""}`
+    + `${requestId ? `request-id:${requestId};` : ""}ts:${parts.ts};`;
+  const expected = createHmac("sha256", secret).update(manifest).digest();
+  const received = Buffer.from(parts.v1, "hex");
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}
+
+function safePayload(payment: Payment) {
+  return {
+    id: payment.id, status: payment.status, status_detail: payment.status_detail,
+    external_reference: payment.external_reference, transaction_amount: payment.transaction_amount,
+    currency_id: payment.currency_id, live_mode: payment.live_mode, collector_id: payment.collector_id,
+    merchant_order_id: payment.order?.id, date_approved: payment.date_approved,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Sempre retorna 200 para o MP não reenviar indefinidamente
-  if (req.method !== "POST") return res.status(200).json({ ok: true });
+  applyApiSecurityHeaders(res);
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+    if (!accessToken || !webhookSecret) throw new Error("Payment webhook configuration is incomplete");
 
-    const body = (req.body as any) || {};
-    const { topic, id, type, data, action } = body;
-    const notificationType = topic || type;
-    // IMPORTANTE: no formato novo do MP, data.id = ID do pagamento
-    //             id = ID do evento de notificação (diferente!)
-    // No formato antigo (IPN), id = ID do pagamento (sem data)
-    const resourceId = data?.id || id;
+    const body = (req.body ?? {}) as Notification;
+    if ((body.topic || body.type) !== "payment") return res.status(200).json({ ok: true });
 
-
-    // Log completo para diagnóstico
-    console.log("[webhook] body:", JSON.stringify(body));
-    console.log("[webhook]", JSON.stringify({ notificationType, resourceId, action }));
-
-    if (notificationType !== "payment" || !resourceId) {
-      return res.status(200).json({ ok: true, skipped: notificationType });
+    const queryDataId = headerValue(req.query["data.id"]);
+    const resourceId = queryDataId || String(body.data?.id ?? body.id ?? "");
+    const requestId = headerValue(req.headers["x-request-id"]);
+    const signature = headerValue(req.headers["x-signature"]);
+    if (!queryDataId || !requestId
+      || !validateMercadoPagoSignature(signature, requestId, queryDataId, webhookSecret)) {
+      return res.status(401).json({ error: "Invalid webhook signature" });
     }
 
-    // ID como number — SDK do MP exige number, não string
     const paymentId = Number(resourceId);
-    if (isNaN(paymentId) || paymentId <= 0) {
-      console.warn("[webhook] ID de pagamento inválido:", resourceId);
-      return res.status(200).json({ ok: true });
+    if (!Number.isSafeInteger(paymentId) || paymentId <= 0) return res.status(400).json({ error: "Invalid payment id" });
+
+    const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!paymentResponse.ok) throw new Error(`Payment provider returned ${paymentResponse.status}`);
+    const payment = await paymentResponse.json() as Payment;
+    if (payment.id !== paymentId || !isUuid(payment.external_reference)) {
+      return res.status(400).json({ error: "Payment does not match an order" });
     }
 
-    const MP_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN!;
-    const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
+    const supabase = getSupabaseAdmin();
+    const { data: order, error: orderError } = await supabase.from("payment_orders")
+      .select("id, status, amount_cents").eq("id", payment.external_reference).single();
+    if (orderError || !order) return res.status(404).json({ error: "Order not found" });
 
-    // Busca pagamento direto via REST (mais confiável que o SDK em sandbox)
-    let mpPayment: any = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      // Aguarda antes de consultar: MP às vezes notifica antes do pagamento estar indexado
-      await new Promise(r => setTimeout(r, attempt * 1500));
+    if (payment.currency_id !== "BRL"
+      || Math.abs((payment.transaction_amount ?? -1) - order.amount_cents / 100) > 0.001) {
+      console.error("[webhook] payment amount mismatch", { paymentId, orderId: order.id });
+      return res.status(422).json({ error: "Payment amount mismatch" });
+    }
+    if (process.env.MERCADO_PAGO_COLLECTOR_ID
+      && String(payment.collector_id) !== process.env.MERCADO_PAGO_COLLECTOR_ID) {
+      return res.status(422).json({ error: "Payment recipient mismatch" });
+    }
+    if (process.env.MERCADO_PAGO_LIVE_MODE === "true" && payment.live_mode !== true) {
+      return res.status(422).json({ error: "Test payment rejected in production" });
+    }
 
-      const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          "Authorization": `Bearer ${MP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
+    const status = STATUS_MAP[payment.status ?? ""] ?? "pending";
+    const payload = safePayload(payment);
+    if (status === "approved") {
+      const { error } = await supabase.rpc("apply_payment_approval", {
+        p_order_id: order.id, p_mp_payment: String(paymentId), p_payload: payload,
       });
-
-      const mpData = await mpRes.json();
-      console.log(`[webhook] MP API attempt ${attempt} status=${mpRes.status}:`, JSON.stringify(mpData).slice(0, 300));
-
-      if (mpRes.ok && mpData?.id) {
-        mpPayment = mpData;
-        break;
-      }
-
-      console.warn(`[webhook] Tentativa ${attempt}/3 falhou. status=${mpRes.status} error=${mpData?.message}`);
-    }
-
-    if (!mpPayment) {
-      console.error("[webhook] Não foi possível buscar pagamento após 3 tentativas. paymentId:", paymentId);
-      return res.status(200).json({ ok: true });
-    }
-
-
-    const externalRef = mpPayment.external_reference; // = order.id (UUID)
-    const mpStatus    = mpPayment.status || "unknown";
-    const localStatus = STATUS_MAP[mpStatus] || "pending";
-
-    console.log(`[webhook] payment=${paymentId} mpStatus=${mpStatus} ref=${externalRef}`);
-
-    if (!externalRef) return res.status(200).json({ ok: true });
-
-    // Busca ordem pelo order_id direto
-    let order: any = null;
-    const { data: orderById } = await supabase
-      .from("payment_orders")
-      .select("id, user_id, status")
-      .eq("id", externalRef)
-      .maybeSingle();
-
-    if (orderById) {
-      order = orderById;
+      if (error) throw error;
+    } else if (["cancelled", "refunded", "charged_back"].includes(status)) {
+      const { error } = await supabase.rpc("apply_payment_reversal", {
+        p_order_id: order.id, p_status: status, p_payload: payload,
+      });
+      if (error) throw error;
     } else {
-      const { data: orderByRef } = await supabase
-        .from("payment_orders")
-        .select("id, user_id, status")
-        .eq("external_reference", externalRef)
-        .maybeSingle();
-      order = orderByRef;
+      const { error } = await supabase.from("payment_orders").update({
+        status, mp_payment_id: String(paymentId), mp_merchant_order_id: String(payment.order?.id ?? ""),
+        notification_payload: payload,
+      }).eq("id", order.id);
+      if (error) throw error;
     }
-
-    if (!order) {
-      console.error("[webhook] Ordem não encontrada:", externalRef);
-      return res.status(200).json({ ok: true });
-    }
-
-    // Salvar dados do MP
-    await supabase.from("payment_orders").update({
-      mp_payment_id:        paymentId,
-      mp_merchant_order_id: String(mpPayment.order?.id || ""),
-      notification_payload: mpPayment,
-    }).eq("id", order.id);
-
-    // Aprovado → efetiva acesso
-    if (localStatus === "approved" && order.status === "pending") {
-      console.log(`[webhook] APROVADO user=${order.user_id} order=${order.id}`);
-      const { error: rpcErr } = await supabase.rpc("apply_payment_approval", {
-        p_order_id:   order.id,
-        p_mp_payment: paymentId,
-        p_payload:    mpPayment,
-      });
-      if (rpcErr) console.error("[webhook] RPC error:", rpcErr.message);
-      else console.log(`[webhook] ✅ Acesso liberado user=${order.user_id}`);
-    } else if (!["approved", "pending"].includes(localStatus) && order.status === "pending") {
-      await supabase.from("payment_orders").update({ status: localStatus }).eq("id", order.id);
-    }
-
     return res.status(200).json({ ok: true });
-  } catch (err: any) {
-    console.error("[webhook] Erro inesperado:", err?.message);
-    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error("[webhook] processing failed", error instanceof Error ? error.message : error);
+    return res.status(500).json({ error: "Webhook processing failed" });
   }
 }

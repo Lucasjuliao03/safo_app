@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchSecureContent, validAccessToken } from './secureContentService';
 
 // ============================================================================
 // SERVIÇOS DE MENTORIA - OPERAÇÕES CRUD COM SUPABASE
@@ -98,30 +99,14 @@ export interface PlanGeneratorInput {
  * Usa a mesma lógica de target_course_ids já existente no sistema.
  */
 export async function getSubjectsWithTopicsForCourse(courseId: string): Promise<PlanSubjectInput[]> {
-  const cid = Number(courseId);
-
-  // 1. Buscar todos os temas do curso
-  const { data: allTopics, error: topicErr } = await supabase
-    .from('topics')
-    .select('id, name, subject_id, target_course_ids, sort_order')
-    .order('sort_order');
-  if (topicErr) throw topicErr;
-
-  // Filtrar temas visíveis ao curso
-  const visibleTopics = (allTopics || []).filter((t: any) =>
-    !t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid)
-  );
-
-  if (visibleTopics.length === 0) return [];
-
-  // 2. Buscar matérias que têm ao menos 1 tema visível
-  const subjectIds = [...new Set(visibleTopics.map((t: any) => t.subject_id))];
-  const { data: subjects, error: subErr } = await supabase
-    .from('subjects')
-    .select('id, name')
-    .in('id', subjectIds)
-    .order('name');
-  if (subErr) throw subErr;
+  if (!Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0) {
+    throw new Error('Seu perfil precisa de um curso vinculado para gerar a mentoria.');
+  }
+  const [subjects, visibleTopics] = await Promise.all([
+    fetchSecureContent<{ id: number; name: string }>('subjects', { courseId }),
+    fetchSecureContent<{ id: number; name: string; subject_id: number; sort_order: number }>('topics', { courseId }),
+  ]);
+  visibleTopics.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   // 3. Montar estrutura matéria → temas
   const topicsBySubject = new Map<string, PlanTopicInput[]>();
@@ -142,25 +127,36 @@ export async function getSubjectsWithTopicsForCourse(courseId: string): Promise<
 // Área do Aluno (Visualização e Check-in)
 // ---------------------------------------------------------
 
+export async function enrollInMentoria(): Promise<void> {
+  const { token } = await validAccessToken();
+  const response = await fetch('/api/mentoria/enroll', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || 'Não foi possível ativar a mentoria.');
+  }
+}
+
 export async function getMyMentoriaStatus(userId: string) {
   const { data, error } = await supabase
     .from('mentoria_alunos')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 is No Rows Found
   return data || null;
 }
 
 export async function getDiagnostico(userId: string) {
-  const { data, error } = await supabase.from('mentoria_diagnosticos').select('*').eq('user_id', userId).single();
+  const { data, error } = await supabase.from('mentoria_diagnosticos').select('*').eq('user_id', userId).maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
   return data || null;
 }
 
 export async function getEstrategia(userId: string) {
-  const { data, error } = await supabase.from('mentoria_estrategias').select('*').eq('user_id', userId).single();
+  const { data, error } = await supabase.from('mentoria_estrategias').select('*').eq('user_id', userId).maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
   return data || null;
 }
@@ -254,7 +250,7 @@ export async function generateStudyPlan(input: PlanGeneratorInput): Promise<numb
   const includeSimulations = diagnostico.include_simulations ?? false;
   const simFrequency       = diagnostico.simulation_frequency_days || 14;
   const reviewFrequency    = diagnostico.review_frequency || 'semanal';
-  const examDate           = diagnostico.exam_date || null;
+  const examDate           = diagnostico.exam_date?.split('T')[0] || null;
 
   // Semanas do plano: exam_date → véspera, ou fallback 8 semanas
   const weeksToGenerate = weeksOverride ?? calcWeeksToGenerate(examDate, startDate, 8);
@@ -433,35 +429,20 @@ export async function generateStudyPlan(input: PlanGeneratorInput): Promise<numb
     }
   }
 
-  // Operações pós-insert (não-críticas — falha não cancela o resultado)
-  try {
-    const totalW = weights.reduce((s, x) => s + x.weight, 0);
-    const focusAreas: Record<string, string> = {};
-    weights.forEach(s => { focusAreas[s.name] = `${Math.round((s.weight / totalW) * 100)}% do tempo`; });
-    const weeklyM = studyDays.length * dailyMinutes;
-    const pctQ = ({ teoria: 0.25, questoes: 0.65, revisao: 0.30, reta_final: 0.55, misto: 0.40 } as Record<string,number>)[effectiveFocus] ?? 0.40;
-    const rmap: Record<string, string> = { diaria: '24h', dois_dias: '48h', semanal: '7d' };
-    await supabase.from('mentoria_estrategias').upsert({
-      user_id: userId,
-      weekly_questions_target: Math.round((weeklyM * pctQ) / 3),
-      review_pattern: rmap[reviewFrequency] || '7d',
-      focus_areas: focusAreas,
-      simulate_frequency_days: includeSimulations ? simFrequency : 999,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' });
-  } catch (e) { console.warn('[generateStudyPlan] estratégia (não crítico):', e); }
-
+  // Strategy is persisted by the authenticated server enrollment action.
   try {
     const v = (diagnostico.plan_version || 0) + 1;
-    await supabase.from('mentoria_plan_versions').insert({
+    const { error: versionError } = await supabase.from('mentoria_plan_versions').insert({
       user_id: userId, version: v,
       reason: v === 1 ? 'onboarding_inicial' : 're_diagnostico',
       snapshot: { subjects_count: subjects.length, blocks_per_day: blocksPerDay, block_minutes: blockMinutes, exam_date: examDate },
     });
-    await supabase.from('mentoria_diagnosticos').update({
+    if (versionError) throw versionError;
+    const { error: flagsError } = await supabase.from('mentoria_diagnosticos').update({
       plan_generated: true, plan_version: v,
       plan_generated_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('user_id', userId);
+    if (flagsError) throw flagsError;
   } catch (e) { console.warn('[generateStudyPlan] versão/flags (execute SQL de migração):', e); }
 
   console.log('[generateStudyPlan] ✅', tasks.length, 'tarefas inseridas');

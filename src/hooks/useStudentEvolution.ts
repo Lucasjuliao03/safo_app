@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { fetchSecureContent } from '@/services/secureContentService';
 import { SUBJECT_COLORS, SUBJECT_ICONS, DEFAULT_ICON, DEFAULT_COLOR } from './useStudyData';
 
 export interface SubjectProgress {
@@ -49,12 +50,46 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
 
         const cid = parseInt(courseId);
 
-        // 1. Buscar data da prova do PERFIL do usuário
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('exam_date')
-          .eq('id', userId)
-          .maybeSingle();
+        const pageSize = 1000;
+        const productivityPromise = (async () => {
+          let total = 0;
+          for (let page = 0; ; page += 1) {
+            const { data } = await supabase
+              .from('user_daily_productivity')
+              .select('questions_answered')
+              .eq('user_id', userId)
+              .range(page * pageSize, (page + 1) * pageSize - 1);
+            if (!data?.length) break;
+            total += data.reduce((sum, item) => sum + (item.questions_answered || 0), 0);
+            if (data.length < pageSize) break;
+          }
+          return total;
+        })();
+
+        // Todas estas leituras são independentes. Em produção na Vercel elas
+        // podem compartilhar a latência de rede em vez de formar uma cascata.
+        const [
+          profileResult,
+          subjectsResult,
+          questions,
+          flashcards,
+          summaries,
+          productivityQuestions,
+          reviewsResult,
+          summaryViewsResult,
+        ] = await Promise.all([
+          supabase.from('profiles').select('exam_date').eq('id', userId).maybeSingle(),
+          supabase.from('subjects').select('id, name').order('name'),
+          fetchSecureContent<any>('questions', { courseId: cid }),
+          fetchSecureContent<any>('flashcards', { courseId: cid }),
+          fetchSecureContent<any>('summaries', { courseId: cid }),
+          productivityPromise,
+          supabase.from('user_flashcard_reviews').select('flashcard_id').eq('user_id', userId),
+          supabase.from('user_summary_views').select('summary_id').eq('user_id', userId),
+        ]);
+
+        const profileData = profileResult.data;
+        const subjects = subjectsResult.data || [];
 
         const examDate = profileData?.exam_date ? String(profileData.exam_date).split('T')[0] : null;
         const examDateFormatted = examDate 
@@ -76,134 +111,20 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
           examPassed = daysUntilExam < 0;
         }
 
-        // 2. Buscar TODAS as matérias
-        const { data: subjectsData } = await supabase
-          .from('subjects')
-          .select('id, name')
-          .order('name');
-        
-        const subjects = subjectsData || [];
-
-        // 3. Buscar TODOS os topics
-        const { data: allTopics } = await supabase
-          .from('topics')
-          .select('id, name, subject_id, target_course_ids');
-        
-        // Filtrar topics visíveis para o curso
-        const visibleTopicIds: number[] = [];
-        (allTopics || []).forEach((t: any) => {
-          if (!t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid)) {
-            visibleTopicIds.push(t.id);
-          }
-        });
-
-        // 4. Questões Disponíveis e Respondidas - com paginação
-        let allQuestions: any[] = [];
-        let qPage = 0;
-        const pageSize = 1000;
-        
-        while (true) {
-          const { data: questionsPage } = await supabase
-            .from('questions')
-            .select('id, topic_id, subject_id, topics(target_course_ids)')
-            .eq('is_active', true)
-            .eq('status', 'published')
-            .range(qPage * pageSize, (qPage + 1) * pageSize - 1);
-          
-          if (!questionsPage || questionsPage.length === 0) break;
-          allQuestions = [...allQuestions, ...questionsPage];
-          qPage++;
-          if (questionsPage.length < pageSize) break;
-        }
-        
-        // Filtrar questões vinculadas ao curso
-        const questions = allQuestions.filter((q: any) => {
-          const tc = q.topics?.target_course_ids;
-          return !tc || tc.length === 0 || tc.includes(cid);
-        });
+        // O conteúdo já chega filtrado pelo curso e pelo acesso no backend.
         const questionsTotal = questions.length;
+        const questionsDone = productivityQuestions;
 
-        // Respondidas pelo usuário - buscar de TODOS os dias na user_daily_productivity
-        let allProdQuestions = 0;
-        let prodPage = 0;
-        
-        while (true) {
-          const { data: prodData } = await supabase
-            .from('user_daily_productivity')
-            .select('questions_answered')
-            .eq('user_id', userId)
-            .range(prodPage * pageSize, (prodPage + 1) * pageSize - 1);
-          
-          if (!prodData || prodData.length === 0) break;
-          allProdQuestions += prodData.reduce((sum, p) => sum + (p.questions_answered || 0), 0);
-          prodPage++;
-          if (prodData.length < pageSize) break;
-        }
-        
-        const questionsDone = allProdQuestions;
-
-        // 5. Flashcards Disponíveis e Revisados - com paginação
-        let allFlashcards: any[] = [];
-        let fcPage = 0;
-        
-        while (true) {
-          const { data: flashcardsPage } = await supabase
-            .from('flashcards')
-            .select('id, topic_id, subject_id, topics(target_course_ids)')
-            .eq('is_active', true)
-            .range(fcPage * pageSize, (fcPage + 1) * pageSize - 1);
-          
-          if (!flashcardsPage || flashcardsPage.length === 0) break;
-          allFlashcards = [...allFlashcards, ...flashcardsPage];
-          fcPage++;
-          if (flashcardsPage.length < pageSize) break;
-        }
-        
-        // Filtrar flashcards vinculados ao curso
-        const flashcards = allFlashcards.filter((f: any) => {
-          const tc = f.topics?.target_course_ids;
-          return !tc || tc.length === 0 || tc.includes(cid);
-        });
+        // 5. Flashcards disponíveis e revisados
         const flashcardsTotal = flashcards.length;
-
-        const { data: fcReviews } = await supabase
-          .from('user_flashcard_reviews')
-          .select('flashcard_id')
-          .eq('user_id', userId);
-        
+        const fcReviews = reviewsResult.data;
         const reviewedIds = new Set((fcReviews || []).map(r => String(r.flashcard_id)));
         const flashcardsDoneCards = flashcards.filter(f => reviewedIds.has(String(f.id)));
         const flashcardsDone = flashcardsDoneCards.length;
 
-        // 6. Resumos Disponíveis e Visualizados - com paginação
-        let allSummaries: any[] = [];
-        let sPage = 0;
-        
-        while (true) {
-          const { data: summariesPage } = await supabase
-            .from('summaries')
-            .select('id, topic_id, subject_id, topics(target_course_ids)')
-            .eq('is_active', true)
-            .range(sPage * pageSize, (sPage + 1) * pageSize - 1);
-          
-          if (!summariesPage || summariesPage.length === 0) break;
-          allSummaries = [...allSummaries, ...summariesPage];
-          sPage++;
-          if (summariesPage.length < pageSize) break;
-        }
-        
-        // Filtrar resumos vinculados ao curso
-        const summaries = allSummaries.filter((s: any) => {
-          const tc = s.topics?.target_course_ids;
-          return !tc || tc.length === 0 || tc.includes(cid);
-        });
+        // 6. Resumos disponíveis e visualizados
         const summariesTotal = summaries.length;
-
-        const { data: sumViews } = await supabase
-          .from('user_summary_views')
-          .select('summary_id')
-          .eq('user_id', userId);
-        
+        const sumViews = summaryViewsResult.data;
         const viewedIds = new Set((sumViews || []).map(v => String(v.summary_id)));
         const summariesDoneItems = summaries.filter(s => viewedIds.has(String(s.id)));
         const summariesDone = summariesDoneItems.length;

@@ -39,7 +39,6 @@ async function loadManifest(): Promise<AvatarManifest[]> {
       avatarMap[item.name] = `/avatar/${item.name}.${item.ext}`;
     }
     
-    console.log('[useAvatar] Manifest carregado:', manifest.length, 'avatars');
     return manifest;
   } catch (error) {
     console.error('[useAvatar] Erro ao carregar manifest:', error);
@@ -73,8 +72,6 @@ export async function loadAvailableAvatars(): Promise<string[]> {
   const manifest = await loadManifest();
   AVAILABLE_AVATARS = manifest.map(m => m.name);
   DEFAULT_AVATARS = [...AVAILABLE_AVATARS];
-  console.log('[useAvatar] Avatares carregados:', AVAILABLE_AVATARS);
-  
   // Precarregar as primeiras 10 imagens de avatar em background
   if (manifest.length > 0) {
     const avatarsToPreload = manifest.slice(0, 10).map(m => avatarMap[m.name]);

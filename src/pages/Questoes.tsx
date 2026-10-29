@@ -9,6 +9,7 @@ import { canAccessContent, isUserActive } from "@/services/accessService";
 import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { useMemo } from "react";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
+import { StudyLoadError } from "@/components/StudyLoadError";
 
 function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext, onAnswer }: {
   question: Question;
@@ -135,10 +136,10 @@ export default function QuestoesPage() {
     isAdmin ? null : editalIdNum
   );
   
-  const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
+  const { data: subjects = [], isLoading: loadingSub, error: subjectsError } = useSubjects(isAdmin ? undefined : courseId);
+  const { data: topics = [], isLoading: loadingTop, error: topicsError } = useTopics(isAdmin ? undefined : courseId);
   // Passa activeLawIds para filtrar questoes do edital do usuario
-  const { data: questions = [], isLoading: loadingQ } = useQuestions(
+  const { data: questions = [], isLoading: loadingQ, error: questionsError } = useQuestions(
     isAdmin ? undefined : courseId,
     isAdmin ? null : activeLawIds
   );
@@ -257,6 +258,9 @@ export default function QuestoesPage() {
     );
   }
 
+  if (subjectsError || topicsError || questionsError) {
+    return <AppLayout><StudyLoadError error={subjectsError || topicsError || questionsError} /></AppLayout>;
+  }
   if (loadingQ || loadingSub || loadingTop || loadingStats) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando questões...</div></AppLayout>;
   }
@@ -492,7 +496,7 @@ export default function QuestoesPage() {
           key={currentQuestion.id}
           question={currentQuestion}
           subjectName={subject?.name ?? "Geral"}
-          subjectIcon={subject?.icon}
+          subjectIcon={typeof subject?.icon === "string" ? undefined : subject?.icon}
           onNext={handleNext}
           onAnswer={handleAnswer}
         />

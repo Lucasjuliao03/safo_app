@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,44 +7,56 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
-import Index from "./pages/Index";
-import Questoes from "./pages/Questoes";
-import Flashcards from "./pages/Flashcards";
-import Resumos from "./pages/Resumos";
-import Estudos from "./pages/Estudos";
-import Perfil from "./pages/Perfil";
-import Login from "./pages/Login";
-import Admin from "./pages/Admin";
-import NotFound from "./pages/NotFound";
-import Achievements from "./pages/Achievements";
-import Ranking from "./pages/Ranking";
-import Assinar from "./pages/Assinar";
-import PagamentoSucesso from "./pages/pagamento/Sucesso";
-import PagamentoPendente from "./pages/pagamento/Pendente";
-import PagamentoFalhou from "./pages/pagamento/Falhou";
+import { SecureContentError } from "@/services/secureContentService";
+const Index = lazy(() => import("./pages/Index"));
+const Questoes = lazy(() => import("./pages/Questoes"));
+const Flashcards = lazy(() => import("./pages/Flashcards"));
+const Resumos = lazy(() => import("./pages/Resumos"));
+const Estudos = lazy(() => import("./pages/Estudos"));
+const Perfil = lazy(() => import("./pages/Perfil"));
+const Login = lazy(() => import("./pages/Login"));
+const Admin = lazy(() => import("./pages/Admin"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Achievements = lazy(() => import("./pages/Achievements"));
+const Ranking = lazy(() => import("./pages/Ranking"));
+const Assinar = lazy(() => import("./pages/Assinar"));
+const PagamentoSucesso = lazy(() => import("./pages/pagamento/Sucesso"));
+const PagamentoPendente = lazy(() => import("./pages/pagamento/Pendente"));
+const PagamentoFalhou = lazy(() => import("./pages/pagamento/Falhou"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminStructure = lazy(() => import("./pages/admin/AdminStructure"));
+const AdminQuestions = lazy(() => import("./pages/admin/AdminQuestions"));
+const AdminContent = lazy(() => import("./pages/admin/AdminContent"));
+const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
+const AdminPush = lazy(() => import("./pages/admin/AdminPush"));
+const AdminPlansPage = lazy(() => import("./pages/admin/AdminPlansPage"));
+const AdminMentoriaDashboard = lazy(() => import("./pages/admin/AdminMentoriaDashboard"));
+const AdminMentoriaAluno = lazy(() => import("./pages/admin/AdminMentoriaAluno"));
+const AdminPatrulhamento = lazy(() => import("./pages/admin/AdminPatrulhamento"));
+const AdminPatrulhamentoEditor = lazy(() => import("./pages/admin/AdminPatrulhamentoEditor"));
+const AdminLawReferences = lazy(() => import("./pages/admin/AdminLawReferences"));
+const MentoriaDashboard = lazy(() => import("./pages/mentoria/MentoriaDashboard"));
+const MentoriaExecucao = lazy(() => import("./pages/mentoria/MentoriaExecucao"));
+const MentoriaDesempenho = lazy(() => import("./pages/mentoria/MentoriaDesempenho"));
+const PatrulhamentoDashboard = lazy(() => import("./pages/patrulhamento/PatrulhamentoDashboard"));
+const PatrulhamentoFase = lazy(() => import("./pages/patrulhamento/PatrulhamentoFase"));
 
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminStructure from "./pages/admin/AdminStructure";
-import AdminQuestions from "./pages/admin/AdminQuestions";
-import AdminContent from "./pages/admin/AdminContent";
-import AdminMessages from "./pages/admin/AdminMessages";
-import AdminPush from "./pages/admin/AdminPush";
-import AdminPlansPage from "./pages/admin/AdminPlansPage";
-import AdminMentoriaDashboard from "./pages/admin/AdminMentoriaDashboard";
-import AdminMentoriaAluno from "./pages/admin/AdminMentoriaAluno";
-import AdminPatrulhamento from "./pages/admin/AdminPatrulhamento";
-import AdminPatrulhamentoEditor from "./pages/admin/AdminPatrulhamentoEditor";
-import AdminLawReferences from "./pages/admin/AdminLawReferences";
-
-import MentoriaDashboard from "./pages/mentoria/MentoriaDashboard";
-import MentoriaExecucao from "./pages/mentoria/MentoriaExecucao";
-import MentoriaDesempenho from "./pages/mentoria/MentoriaDesempenho";
-
-import PatrulhamentoDashboard from "./pages/patrulhamento/PatrulhamentoDashboard";
-import PatrulhamentoFase from "./pages/patrulhamento/PatrulhamentoFase";
-
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        if (error instanceof SecureContentError) {
+          if (error.status >= 400 && error.status < 500) return false;
+          return failureCount < 1;
+        }
+        return failureCount < 2;
+      },
+    },
+  },
+});
 
 // Intro Video Screen Overlay
 const IntroScreen = ({ onFinish }: { onFinish: () => void }) => {
@@ -87,6 +99,7 @@ const AppRoutes = () => {
     <>
       {!introFinished && <IntroScreen onFinish={handleFinishIntro} />}
       <div className={introFinished ? "block" : "hidden h-0 overflow-hidden"}>
+        <Suspense fallback={<div className="dark min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
@@ -132,6 +145,7 @@ const AppRoutes = () => {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
       </div>
     </>
   );

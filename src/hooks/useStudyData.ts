@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { ACHIEVEMENTS } from '@/types/achievements';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import { Scale, FileText, BookOpen, Building2, Users, PenTool, BookOpenIcon } from 'lucide-react';
+import { fetchSecureContent } from '@/services/secureContentService';
 
 /* ═══════════════════════════════════════════════════════ */
 /*  ICON MAP (UI only — not stored in DB)                 */
@@ -49,26 +50,7 @@ export function useSubjects(courseId?: string | null) {
       // Admin (courseId undefined) vê tudo; usuário sem curso (null) não vê nada
       if (courseId === null) return [];
 
-      let { data, error } = await supabase.from('subjects').select('*').order('name');
-      if (error) throw error;
-      let allSubjects = data || [];
-
-      if (courseId) {
-         const cid = parseInt(courseId);
-         
-         // Busca todos os temas e filtra quais são visíveis para este curso
-         const { data: allTopics } = await supabase.from('topics').select('subject_id, target_course_ids');
-         const allowedSubjectIds = new Set<number>();
-         
-         (allTopics || []).forEach((t: any) => {
-            // Tema visível se: target_course_ids está vazio (aberto a todos) OU contém o curso do aluno
-            if (!t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid)) {
-               allowedSubjectIds.add(t.subject_id);
-            }
-         });
-         
-         allSubjects = allSubjects.filter(sub => allowedSubjectIds.has(parseInt(sub.id)));
-      }
+      const allSubjects = await fetchSecureContent<any>('subjects', { courseId });
 
       return allSubjects.map((s: any): Subject => {
         const color = SUBJECT_COLORS[s.name] || DEFAULT_COLOR;
@@ -87,16 +69,9 @@ export function useTopics(courseId?: string | null) {
   return useQuery({
     queryKey: ['topics', courseId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('topics').select('*').order('sort_order');
-      if (error) throw error;
-      if (!data) return [];
-      
-      // Se courseId definido, filtra: tema visível se target_course_ids vazio OU contém o curso
-      if (courseId) {
-        const cid = Number(courseId);
-        return data.filter((t: any) => !t.target_course_ids || t.target_course_ids.length === 0 || t.target_course_ids.includes(cid));
-      }
-      return data;
+      if (courseId === null) return [];
+      const data = await fetchSecureContent<any>('topics', { courseId });
+      return data.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     },
     staleTime: 1000 * 60 * 30,
   });
@@ -109,47 +84,10 @@ export function useQuestions(courseId?: string | null, activeLawIds?: number[] |
   return useQuery({
     queryKey: ['questions', courseId, activeLawIds],
     queryFn: async () => {
-      // Buscar TODAS as questões com paginação
-      let allQuestions: any[] = [];
-      let page = 0;
-      const pageSize = 1000;
-      
-      while (true) {
-        const { data, error } = await supabase
-          .from('questions')
-          .select(`id, subject_id, topic_id, subtopic_id, question_type, difficulty, source_year, statement,
-                   option_a, option_b, option_c, option_d, option_e, format,
-                   correct_option, explanation, board_id, is_active, status, law_reference_id,
-                   exam_boards(name), topics(name, target_course_ids), law_references(name, short_name)`)
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-        
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        allQuestions = [...allQuestions, ...data];
-        page++;
-        if (data.length < pageSize) break;
-      }
-      
-      let filtered = allQuestions;
-      
-      // Filtrar por is_active e status
-      filtered = filtered.filter((r: any) => r.is_active === true && r.status === 'published');
-      
-      if (courseId) {
-        const cid = Number(courseId);
-        filtered = filtered.filter((row: any) => {
-          const tc = row.topics?.target_course_ids;
-          return !tc || tc.length === 0 || tc.includes(cid);
-        });
-      }
-
-      // Filtro por leis ativas do edital: se activeLawIds definido, mostra APENAS
-      // questões vinculadas a uma das leis permitidas OU questões sem lei vinculada (conteúdo geral)
-      if (activeLawIds && activeLawIds.length > 0) {
-        filtered = filtered.filter((row: any) =>
-          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
-        );
-      }
+      const filtered = await fetchSecureContent<any>('questions', {
+        courseId,
+        lawIds: activeLawIds,
+      });
 
       return filtered.map((q: any): Question => {
         const options = [];
@@ -203,23 +141,10 @@ export function useFlashcards(courseId?: string | null, activeLawIds?: number[] 
   return useQuery({
     queryKey: ['flashcards', courseId, activeLawIds],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('flashcards')
-        .select(`id, subject_id, topic_id, front_text, back_text, difficulty, law_reference_id,
-                 topics(name, target_course_ids), law_references(name, short_name)`)
-        .eq('is_active', true)
-        .eq('status', 'published');
-      if (error) throw error;
-      let filtered = data || [];
-      if (courseId) {
-        const cid = Number(courseId);
-        filtered = filtered.filter(row => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
-      }
-      if (activeLawIds && activeLawIds.length > 0) {
-        filtered = filtered.filter((row: any) =>
-          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
-        );
-      }
+      const filtered = await fetchSecureContent<any>('flashcards', {
+        courseId,
+        lawIds: activeLawIds,
+      });
       return filtered.map((f: any): Flashcard => ({
         id: String(f.id),
         subjectId: String(f.subject_id),
@@ -247,30 +172,18 @@ export interface SummaryItem {
   contentMarkdown: string | null;
   format: string;
   sortOrder: number;
+  lawReferenceId: number | null;
+  lawReferenceName: string | null;
 }
 
 export function useSummaries(courseId?: string | null, activeLawIds?: number[] | null) {
   return useQuery({
     queryKey: ['summaries', courseId, activeLawIds],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('summaries')
-        .select(`id, subject_id, topic_id, subtopic_id, title, format, content_html, content_markdown, sort_order, law_reference_id,
-                 topics(name, target_course_ids), subtopics(name), law_references(name, short_name)`)
-        .eq('is_active', true)
-        .eq('status', 'published')
-        .order('sort_order');
-      if (error) throw error;
-      let filtered = data || [];
-      if (courseId) {
-        const cid = Number(courseId);
-        filtered = filtered.filter((row: any) => !row.topics?.target_course_ids || row.topics.target_course_ids.length === 0 || row.topics.target_course_ids.includes(cid));
-      }
-      if (activeLawIds && activeLawIds.length > 0) {
-        filtered = filtered.filter((row: any) =>
-          !row.law_reference_id || activeLawIds.includes(Number(row.law_reference_id))
-        );
-      }
+      const filtered = await fetchSecureContent<any>('summaries', {
+        courseId,
+        lawIds: activeLawIds,
+      });
 
       return filtered.map((s: any): SummaryItem => ({
         id: String(s.id),
@@ -629,7 +542,6 @@ export function useRecordAnswer() {
         notifications.markAsStudied();
         
         // Verificar e notificar streak
-        notifications.checkAndNotify(vars.userId);
       } catch (e) {
         console.error('[useRecordAnswer] Erro geral nas conquistas:', e);
       }
@@ -889,7 +801,6 @@ export function useRecordFlashcardReview() {
           
           // Marcar como estudado e verificar streak
           notifications.markAsStudied();
-          notifications.checkAndNotify(vars.userId);
         }
       } catch (e) {
         console.error('[useRecordFlashcardReview] Erro geral nas conquistas:', e);

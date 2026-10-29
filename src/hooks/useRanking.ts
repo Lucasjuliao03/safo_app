@@ -96,14 +96,20 @@ export function useRanking(
 
       // Se não tem dados no ranking_global, calcular dinamicamente
       if (!rankingData || rankingData.length === 0) {
-        console.log('[useRanking] No ranking data, calculating dynamically...');
-        
         // Buscar usuários
-        const { data: users, error: usersError } = await supabase
-          .from('profiles')
+        let { data: users, error: usersError } = await supabase
+          .from('public_profiles')
           .select('id, full_name, nickname, avatar, avatar_url, course_id');
-        
-        console.log('[useRanking] total users:', users?.length, 'error:', usersError);
+
+        // Compatibilidade apenas durante o rollout da migration. Seleciona
+        // exclusivamente os mesmos campos não sensíveis da view.
+        if (usersError?.code === 'PGRST205') {
+          const fallback = await supabase
+            .from('profiles')
+            .select('id, full_name, nickname, avatar, avatar_url, course_id');
+          users = fallback.data;
+          usersError = fallback.error;
+        }
         
         if (!users || users.length === 0) return [];
 
@@ -112,7 +118,6 @@ export function useRanking(
         if (type === 'course' && courseId) {
           const targetCourseId = parseInt(courseId);
           usersToProcess = users.filter(u => u.course_id === targetCourseId);
-          console.log('[useRanking] users in course:', usersToProcess.length, 'courseId:', targetCourseId);
         } else if (type === 'general' && courseId) {
           // Se não especificou 'course', ainda filtrar pelo curso do usuário
           const targetCourseId = parseInt(courseId);
@@ -273,10 +278,19 @@ export function useRanking(
       // Buscar nomes dos usuários
       if (ranking.length > 0) {
         const userIds = ranking.map(r => r.userId);
-        const { data: profiles } = await supabase
-          .from('profiles')
+        let { data: profiles, error: profilesError } = await supabase
+          .from('public_profiles')
           .select('id, full_name, nickname, avatar, avatar_url')
           .in('id', userIds);
+
+        if (profilesError?.code === 'PGRST205') {
+          const fallback = await supabase
+            .from('profiles')
+            .select('id, full_name, nickname, avatar, avatar_url')
+            .in('id', userIds);
+          profiles = fallback.data;
+          profilesError = fallback.error;
+        }
 
         if (profiles) {
           ranking.forEach(r => {
@@ -313,7 +327,7 @@ export function useWeeklyChallenge(userId?: string, courseId?: string | null) {
         .eq('week_number', currentWeek)
         .eq('year', currentYear)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
       if (courseId) {
         query = supabase
@@ -323,7 +337,7 @@ export function useWeeklyChallenge(userId?: string, courseId?: string | null) {
           .eq('week_number', currentWeek)
           .eq('year', currentYear)
           .eq('is_active', true)
-          .single();
+          .maybeSingle();
       }
 
       const { data, error } = await query;

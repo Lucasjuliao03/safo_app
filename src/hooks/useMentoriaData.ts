@@ -138,13 +138,11 @@ export function useApplyMentoria() {
       const { courseId: _courseId, ...diagFormClean } = props.diagForm as any;
       const courseId = String(_courseId || '');
 
-      // 1. Ativar mentoria do aluno
-      const { error: alError } = await supabase
-        .from('mentoria_alunos')
-        .upsert({ user_id: props.userId, status: 'active' }, { onConflict: 'user_id' });
-      if (alError) throw alError;
+      // Resolve the curriculum before persisting any onboarding state.
+      const planSubjects = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
+      if (!planSubjects.length) throw new Error('Nenhuma matéria disponível para o curso vinculado ao seu perfil.');
 
-      // 2a. Salvar colunas base do diagnóstico (sempre existem no banco)
+      // Save all preferences together so errors cannot be silently ignored.
       const basePayload = {
         user_id:                 props.userId,
         objective:               diagFormClean.objective,
@@ -155,6 +153,14 @@ export function useApplyMentoria() {
         history_report:          diagFormClean.history_report,
         method_style:            diagFormClean.method_style,
         mentor_notes:            diagFormClean.mentor_notes || '',
+        study_days_of_week:       diagFormClean.study_days_of_week,
+        preferred_period:         diagFormClean.preferred_period,
+        preparation_level:        diagFormClean.preparation_level,
+        include_simulations:      diagFormClean.include_simulations,
+        simulation_frequency_days: diagFormClean.simulation_frequency_days,
+        review_frequency:         diagFormClean.review_frequency,
+        current_focus:            diagFormClean.current_focus,
+        schedule_notes:           diagFormClean.schedule_notes,
         updated_at:              new Date().toISOString(),
       };
       const { error: diagError } = await supabase
@@ -162,46 +168,13 @@ export function useApplyMentoria() {
         .upsert(basePayload, { onConflict: 'user_id' });
       if (diagError) throw diagError;
 
-      // 2b. Tentar salvar colunas novas (só existem após a migration SQL)
-      try {
-        const newColPayload = {
-          user_id:                   props.userId,
-          study_days_of_week:        diagFormClean.study_days_of_week,
-          preferred_period:          diagFormClean.preferred_period,
-          preparation_level:         diagFormClean.preparation_level,
-          include_simulations:       diagFormClean.include_simulations,
-          simulation_frequency_days: diagFormClean.simulation_frequency_days,
-          review_frequency:          diagFormClean.review_frequency,
-          current_focus:             diagFormClean.current_focus,
-          schedule_notes:            diagFormClean.schedule_notes,
-        };
-        await supabase.from('mentoria_diagnosticos').update(newColPayload).eq('user_id', props.userId);
-      } catch (e) {
-        console.warn('[useApplyMentoria] colunas novas não salvas (execute o SQL de migração):', e);
-      }
-
-      // 3. Buscar matérias+temas do banco e gerar plano
-      let planSubjects: mentoriaService.PlanSubjectInput[] = props.subjects || [];
-      if (courseId && courseId !== 'undefined' && courseId !== '0') {
-        try {
-          const withTopics = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
-          if (withTopics.length > 0) planSubjects = withTopics;
-        } catch (e) {
-          console.warn('[useApplyMentoria] falha ao buscar temas:', e);
-        }
-      }
-
-      if (planSubjects.length > 0) {
-        const tasksCreated = await mentoriaService.generateStudyPlan({
-          userId:      props.userId,
-          subjects:    planSubjects,
-          diagnostico: diagFormClean,
-        });
-        return { tasksCreated };
-      }
-
-      console.warn('[useApplyMentoria] subjects vazio — courseId configurado?');
-      return { tasksCreated: 0 };
+      const tasksCreated = await mentoriaService.generateStudyPlan({
+        userId: props.userId,
+        subjects: planSubjects,
+        diagnostico: diagFormClean,
+      });
+      await mentoriaService.enrollInMentoria();
+      return { tasksCreated };
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['mentoria_status', variables.userId] });
@@ -226,20 +199,15 @@ export function useReDiagnostico() {
       const { courseId: _courseId, ...diagFormClean } = props.diagForm as any;
       const courseId = String(_courseId || '');
 
+      const planSubjects = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
+      if (!planSubjects.length) throw new Error('Nenhuma matéria disponível para o curso vinculado ao seu perfil.');
       await mentoriaService.upsertDiagnostico({ ...diagFormClean, user_id: props.userId });
       await mentoriaService.deletePendingFutureTasks(props.userId);
-
-      let planSubjects: mentoriaService.PlanSubjectInput[] = props.subjects || [];
-      if (courseId && courseId !== 'undefined' && courseId !== '0') {
-        try {
-          const withTopics = await mentoriaService.getSubjectsWithTopicsForCourse(courseId);
-          if (withTopics.length > 0) planSubjects = withTopics;
-        } catch (e) { console.warn('[useReDiagnostico] falha ao buscar temas:', e); }
-      }
 
       const tasksCreated = await mentoriaService.generateStudyPlan({
         userId: props.userId, subjects: planSubjects, diagnostico: diagFormClean,
       });
+      await mentoriaService.enrollInMentoria();
       return { tasksCreated };
     },
 

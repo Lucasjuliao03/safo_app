@@ -8,6 +8,7 @@ import { ChevronLeft, Target, Award, BrainCircuit, Play, CheckCircle, XCircle, C
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 
 export default function PatrulhamentoFase() {
   const { id } = useParams();
@@ -212,7 +213,7 @@ export default function PatrulhamentoFase() {
                    ) : (
                       <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-relaxed prose-headings:font-bold prose-a:text-primary">
                          {summaryMatch.contentHtml ? (
-                             <div dangerouslySetInnerHTML={{ __html: summaryMatch.contentHtml }} />
+                             <div dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(summaryMatch.contentHtml) }} />
                          ) : summaryMatch.contentMarkdown ? (
                              <div className="whitespace-pre-wrap">{summaryMatch.contentMarkdown}</div>
                          ) : (

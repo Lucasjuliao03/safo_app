@@ -9,6 +9,30 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") || "mailto:admin@safo.app";
+const APP_URL = (Deno.env.get("APP_URL") || "").replace(/\/$/, "");
+
+function corsHeaders(req: Request): HeadersInit {
+  const origin = req.headers.get("origin");
+  return {
+    ...(origin && origin === APP_URL ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {}),
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Content-Type": "application/json",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
+async function isAuthorizedAdmin(req: Request, adminClient: ReturnType<typeof createClient>): Promise<boolean> {
+  const authorization = req.headers.get("authorization") || "";
+  const token = authorization.replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  if (token === SUPABASE_SERVICE_ROLE_KEY) return true;
+
+  const { data: { user }, error } = await adminClient.auth.getUser(token);
+  if (error || !user) return false;
+  const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
+  return profile?.role === "admin";
+}
 
 // ═══════════════════════════════════════════════════════ //
 //  Web Push Implementation (RFC 8291 / RFC 8292)         //
@@ -306,17 +330,18 @@ async function sendWebPush(
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
-    });
+    const origin = req.headers.get("origin");
+    return new Response(null, { status: origin === APP_URL ? 204 : 403, headers: corsHeaders(req) });
   }
 
   try {
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders(req) });
+    }
+    if (!(await isAuthorizedAdmin(req, adminClient))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders(req) });
+    }
     const body = await req.json();
 
     // Modo 1: Enviar para um user_id específico
@@ -333,7 +358,7 @@ Deno.serve(async (req) => {
       if (subError || !subscriptions?.length) {
         return new Response(
           JSON.stringify({ success: false, error: "Nenhuma subscription ativa", sent: 0 }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: corsHeaders(req) }
         );
       }
 
@@ -380,34 +405,19 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, sent, failed }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: corsHeaders(req) }
       );
-    }
-
-    // Modo 2: Enviar direto para uma subscription (usado internamente)
-    if (body.subscription) {
-      const { subscription, payload: rawPayload } = body;
-      const result = await sendWebPush(
-        subscription.endpoint,
-        subscription.p256dh_key || subscription.keys?.p256dh,
-        subscription.auth_key || subscription.keys?.auth,
-        typeof rawPayload === "string" ? rawPayload : JSON.stringify(rawPayload)
-      );
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
     }
 
     return new Response(
-      JSON.stringify({ error: "Forneça user_id ou subscription" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Forneça user_id" }),
+      { status: 400, headers: corsHeaders(req) }
     );
   } catch (err: any) {
     console.error("send-push error:", err);
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: corsHeaders(req) }
     );
   }
 });

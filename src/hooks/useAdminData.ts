@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { User, UserRole } from "@/types/study";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------
 // USERS MODULE

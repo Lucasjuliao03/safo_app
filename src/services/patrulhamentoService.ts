@@ -128,7 +128,7 @@ export async function completarFase(params: {
 }) {
   const currentP = await fetchProgresso(params.userId, params.courseId);
 
-  let vencidas = currentP?.fases_vencidas || [];
+  const vencidas = currentP?.fases_vencidas || [];
   if (!vencidas.includes(params.faseConcluidaId)) {
     vencidas.push(params.faseConcluidaId);
   }

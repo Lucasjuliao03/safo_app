@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canAccessContent, isUserActive } from "@/services/accessService";
 import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
+import { StudyLoadError } from "@/components/StudyLoadError";
 import { Flashcard } from "@/types/study";
 
 function FlashcardViewer({ card, onRate }: {
@@ -98,9 +99,9 @@ export default function FlashcardsPage() {
     isAdmin ? null : editalIdNum
   );
 
-  const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
-  const { data: flashcards = [], isLoading: loadingF } = useFlashcards(
+  const { data: subjects = [], isLoading: loadingSub, error: subjectsError } = useSubjects(isAdmin ? undefined : courseId);
+  const { data: topics = [], isLoading: loadingTop, error: topicsError } = useTopics(isAdmin ? undefined : courseId);
+  const { data: flashcards = [], isLoading: loadingF, error: flashcardsError } = useFlashcards(
     isAdmin ? undefined : courseId,
     isAdmin ? null : activeLawIds
   );
@@ -184,6 +185,9 @@ export default function FlashcardsPage() {
     );
   }
 
+  if (subjectsError || topicsError || flashcardsError) {
+    return <AppLayout><StudyLoadError error={subjectsError || topicsError || flashcardsError} /></AppLayout>;
+  }
   if (loadingF || loadingSub || loadingTop || loadingStats) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando flashcards...</div></AppLayout>;
   }

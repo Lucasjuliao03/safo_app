@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { StudyLoadError } from "@/components/StudyLoadError";
 import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +24,9 @@ export default function ResumosPage() {
     isAdmin ? null : editalIdNum
   );
 
-  const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: topics = [], isLoading: loadingTop } = useTopics(isAdmin ? undefined : courseId);
-  const { data: summaries = [], isLoading: loadingSum } = useSummaries(
+  const { data: subjects = [], isLoading: loadingSub, error: subjectsError } = useSubjects(isAdmin ? undefined : courseId);
+  const { data: topics = [], isLoading: loadingTop, error: topicsError } = useTopics(isAdmin ? undefined : courseId);
+  const { data: summaries = [], isLoading: loadingSum, error: summariesError } = useSummaries(
     isAdmin ? undefined : courseId,
     isAdmin ? null : activeLawIds
   );
@@ -147,6 +148,9 @@ export default function ResumosPage() {
 
   const accessStatus = useAccessStatus();
   
+  if (subjectsError || topicsError || summariesError) {
+    return <AppLayout><StudyLoadError error={subjectsError || topicsError || summariesError} /></AppLayout>;
+  }
   if (loadingSub || loadingSum || loadingTop || accessStatus.isLoading) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando resumos...</div></AppLayout>;
   }

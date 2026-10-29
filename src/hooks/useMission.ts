@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { fetchSecureContent } from '@/services/secureContentService';
 
 export interface DailyMission {
   id: string;
@@ -46,9 +47,9 @@ export function useDailyMission(userId: string | undefined, courseId: string | n
         .select('*')
         .eq('user_id', userId)
         .eq('mission_date', today)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('[useMission] Erro ao buscar missão:', error);
         return null;
       }
@@ -69,18 +70,10 @@ export function useDailyMission(userId: string | undefined, courseId: string | n
   const createMission = async (uid: string, courseId: string | null): Promise<DailyMission> => {
     const today = new Date().toISOString().split('T')[0];
     
-    const { data: questions } = await supabase
-      .from('questions')
-      .select('id')
-      .eq('is_active', true)
-      .eq('status', 'published')
-      .limit(10);
-
-    const { data: flashcards } = await supabase
-      .from('flashcards')
-      .select('id')
-      .eq('is_active', true)
-      .limit(5);
+    const [questions, flashcards] = await Promise.all([
+      fetchSecureContent<{ id: number }>('questions', { courseId }),
+      fetchSecureContent<{ id: number }>('flashcards', { courseId }),
+    ]);
 
     const { data, error } = await supabase
       .from('daily_missions')
@@ -88,8 +81,8 @@ export function useDailyMission(userId: string | undefined, courseId: string | n
         user_id: uid,
         mission_date: today,
         status: 'pending',
-        questions_count: questions?.length || 10,
-        flashcards_count: flashcards?.length || 5,
+        questions_count: Math.min(questions.length, 10),
+        flashcards_count: Math.min(flashcards.length, 5),
         summary_count: 1,
         questions_completed: 0,
         flashcards_completed: 0,

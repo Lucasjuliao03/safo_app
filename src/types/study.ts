@@ -1,7 +1,7 @@
 export interface Subject {
   id: string;
   name: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string }> | string;
   questionCount: number;
   color: string;
 }
@@ -14,7 +14,7 @@ export interface QuestionOption {
 export interface Question {
   id: string;
   subjectId: string;
-  topicId: string | null;
+  topicId?: string | null;
   lawReferenceId?: number | null;
   lawReferenceName?: string | null;  // Nome curto da norma vinculada
   topic: string;
@@ -33,7 +33,7 @@ export interface Question {
 export interface Flashcard {
   id: string;
   subjectId: string;
-  topicId: string | null;
+  topicId?: string | null;
   lawReferenceId?: number | null;
   lawReferenceName?: string | null;
   topic: string;

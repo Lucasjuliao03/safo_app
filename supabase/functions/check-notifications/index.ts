@@ -6,17 +6,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 Deno.serve(async (req) => {
-  // CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
-    });
+  const jsonHeaders = { "Content-Type": "application/json", "X-Content-Type-Options": "nosniff" };
+  if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: jsonHeaders });
+  if (!CRON_SECRET || req.headers.get("x-cron-secret") !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: jsonHeaders });
   }
 
   try {
@@ -214,7 +210,7 @@ Deno.serve(async (req) => {
       default:
         return new Response(
           JSON.stringify({ error: `Tipo desconhecido: ${notificationType}` }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
+          { status: 400, headers: jsonHeaders }
         );
     }
 
@@ -222,7 +218,7 @@ Deno.serve(async (req) => {
       console.log(`[check-notifications] Nenhum usuário para notificar (${notificationType})`);
       return new Response(
         JSON.stringify({ success: true, type: notificationType, notified: 0, reason: "no_users" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: jsonHeaders }
       );
     }
 
@@ -271,13 +267,13 @@ Deno.serve(async (req) => {
         sent: totalSent,
         failed: totalFailed,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: jsonHeaders }
     );
   } catch (err: any) {
     console.error("[check-notifications] Erro geral:", err);
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: jsonHeaders }
     );
   }
 });

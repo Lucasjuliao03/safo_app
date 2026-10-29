@@ -78,12 +78,24 @@ export function useUpdateNickname() {
       
       // Verificar se nickname já existe (case-insensitive)
       setIsChecking(true);
-      const { data: existing } = await supabase
-        .from('profiles')
+      let { data: existing, error: lookupError } = await supabase
+        .from('public_profiles')
         .select('id, nickname')
         .ilike('nickname', trimmedNickname)
         .neq('id', userId)
         .maybeSingle();
+
+      if (lookupError?.code === 'PGRST205') {
+        const fallback = await supabase
+          .from('profiles')
+          .select('id, nickname')
+          .ilike('nickname', trimmedNickname)
+          .neq('id', userId)
+          .maybeSingle();
+        existing = fallback.data;
+        lookupError = fallback.error;
+      }
+      if (lookupError) throw lookupError;
       
       if (existing) {
         setIsChecking(false);
@@ -115,12 +127,21 @@ export function useCheckNicknameAvailability() {
     mutationFn: async (nickname: string) => {
       const trimmed = nickname.trim();
       
-      const { data: existing, error } = await supabase
-        .from('profiles')
+      let { data: existing, error } = await supabase
+        .from('public_profiles')
         .select('id')
         .ilike('nickname', trimmed)
         .maybeSingle();
-      
+
+      if (error?.code === 'PGRST205') {
+        const fallback = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('nickname', trimmed)
+          .maybeSingle();
+        existing = fallback.data;
+        error = fallback.error;
+      }
       if (error) throw error;
       
       return {

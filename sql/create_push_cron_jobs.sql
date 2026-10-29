@@ -7,6 +7,10 @@
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net SCHEMA extensions;
 
+-- Antes de agendar, grave um segredo forte no Vault (uma única vez):
+-- SELECT vault.create_secret('valor-aleatorio-com-32-ou-mais-bytes', 'push_cron_secret');
+-- Configure o mesmo valor como CRON_SECRET nas Edge Functions.
+
 -- =========================================================
 -- 1. LEMBRETE DIÁRIO DE ESTUDO — 09:00 BRT (12:00 UTC)
 -- =========================================================
@@ -16,7 +20,10 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := 'https://melyesnqvbatmpxvotwc.supabase.co/functions/v1/check-notifications',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_secret_H3CGpZvhylHNXzJCQ-1wqQ_tvibB1DT"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'push_cron_secret')
+    ),
     body := '{"type": "daily_reminder"}'::jsonb
   ) AS request_id;
   $$
@@ -31,7 +38,10 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := 'https://melyesnqvbatmpxvotwc.supabase.co/functions/v1/check-notifications',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_secret_H3CGpZvhylHNXzJCQ-1wqQ_tvibB1DT"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'push_cron_secret')
+    ),
     body := '{"type": "mission_available"}'::jsonb
   ) AS request_id;
   $$
@@ -46,7 +56,10 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := 'https://melyesnqvbatmpxvotwc.supabase.co/functions/v1/check-notifications',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_secret_H3CGpZvhylHNXzJCQ-1wqQ_tvibB1DT"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'push_cron_secret')
+    ),
     body := '{"type": "motivational"}'::jsonb
   ) AS request_id;
   $$
@@ -61,7 +74,10 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := 'https://melyesnqvbatmpxvotwc.supabase.co/functions/v1/check-notifications',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_secret_H3CGpZvhylHNXzJCQ-1wqQ_tvibB1DT"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'push_cron_secret')
+    ),
     body := '{"type": "streak_risk"}'::jsonb
   ) AS request_id;
   $$

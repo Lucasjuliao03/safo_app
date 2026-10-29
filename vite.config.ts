@@ -9,14 +9,16 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // Falhar claramente se a porta estiver ocupada. Trocar silenciosamente de
+    // porta deixa clientes HMR antigos tentando conectar ao servidor errado.
+    strictPort: true,
     hmr: {
       overlay: false,
     },
-    // Proxy /api/* para o servidor Vercel Functions em desenvolvimento.
-    // Rode: `vercel dev` (porta 3000) em paralelo com `npm run dev` (porta 8080)
+    // A API local é iniciada pelo próprio `npm run dev`.
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: "http://127.0.0.1:3000",
         changeOrigin: true,
       },
     },
@@ -65,10 +67,17 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       injectManifest: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,mp4}"],
+        // Cache only the application shell. Large videos/avatars remain available
+        // on demand and no longer make every PWA update download ~10 MB.
+        globPatterns: ["**/*.{js,css,html,ico,svg}"],
+        // The XLSX engine is loaded only on explicit admin action and must not
+        // be downloaded during service-worker installation.
+        globIgnores: ["**/avatar/**", "**/*.mp4", "**/exceljs*.js"],
       },
       devOptions: {
-        enabled: true,
+        // Um service worker em desenvolvimento pode servir módulos Vite/HMR
+        // antigos e quebrar o React Fast Refresh após upgrades de dependências.
+        enabled: false,
         type: "module",
       }
     })

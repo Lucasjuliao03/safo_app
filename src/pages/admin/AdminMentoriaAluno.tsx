@@ -138,7 +138,7 @@ export default function AdminMentoriaAluno() {
     const customTopics = genForm.topicsText.split(',').map(t => t.trim()).filter(t => t.length > 0);
     
     // Build Schedule Array based on Smart Mode
-    let scheduleBlueprint: { sid: string, tid: string | null }[] = [];
+    const scheduleBlueprint: { sid: string, tid: string | null }[] = [];
     
     if (genForm.smartMode && evolution && evolution.subjectProgress) {
         // Build weighted array based on performance deficit
@@ -188,7 +188,7 @@ export default function AdminMentoriaAluno() {
         });
     }
 
-    let tasks: Omit<MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[] = [];
+    const tasks: Omit<MentoriaTarefa, 'id' | 'created_at' | 'updated_at' | 'completed_at'>[] = [];
     let blueprintIndex = 0;
     let typeIndex = 0;
     let customTopicIndex = 0;

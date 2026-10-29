@@ -90,7 +90,8 @@ CREATE POLICY "Admin gerencia edital_law_references" ON public.edital_law_refere
 -- 5. View auxiliar: mostra quais leis estão ativas para cada curso
 --    (une pelo edital vinculado ao curso)
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE VIEW public.v_course_active_laws AS
+CREATE OR REPLACE VIEW public.v_course_active_laws
+WITH (security_invoker = true) AS
 SELECT
   c.id                    AS course_id,
   c.name                  AS course_name,

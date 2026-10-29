@@ -1,4 +1,3 @@
-/// <reference no-default-lib="true"/>
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
@@ -11,8 +10,6 @@ import { clientsClaim } from 'workbox-core';
 
 declare let self: ServiceWorkerGlobalScope;
 
-// Ativar imediatamente a nova versão
-self.skipWaiting();
 clientsClaim();
 
 // Permite acionar o update pelo frontend
@@ -71,7 +68,7 @@ self.addEventListener('push', (event: PushEvent) => {
     data: {
       url: payload.url || '/',
     },
-    // @ts-ignore: TS DOM lib missing vibrate in NotificationOptions
+    // @ts-expect-error: TS DOM lib missing vibrate in NotificationOptions
     vibrate: [100, 50, 100],
     requireInteraction: false,
   };
