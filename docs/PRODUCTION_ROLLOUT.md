@@ -38,6 +38,10 @@ A migration restringe dados pessoais, impede autoelevação de privilégio, fech
 
 ## 5. Gate de lançamento
 
+Publicar a raiz do repositório na Vercel (preset Vite), incluindo `api/`, `server/` e `vercel.json`; enviar somente `dist/` publica apenas o frontend. O arquivo `api/content.ts` é a Function estática para a qual as rotas `/api/content/:type` são reescritas.
+
+Conferir o deploy com `GET /api/health` (200 JSON) e `GET /api/content/questions` sem sessão (401 JSON). Se o segundo retornar `200 text/html`, o deploy está atendendo a API pelo fallback da SPA. O funcionamento local com o Supabase não substitui essa verificação na URL publicada.
+
 Executar em CI e homologação:
 
 ```sh

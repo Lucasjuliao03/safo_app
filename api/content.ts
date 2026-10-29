@@ -1,7 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { applySameOriginCors } from "../../server/httpSecurity.js";
-import { authenticateBearer, getSupabaseAdmin } from "../../server/supabaseAdmin.js";
-import { isTopicVisibleForCourse } from "../../src/lib/courseScope.js";
+import { applySameOriginCors } from "../server/httpSecurity.js";
+import { authenticateBearer, getSupabaseAdmin } from "../server/supabaseAdmin.js";
+import { isTopicVisibleForCourse } from "../src/lib/courseScope.js";
+
+// Generic Vercel Node Functions do not expand [type] paths as Next.js does.
+// vercel.json maps /api/content/:type to this static function's query string.
 
 type ContentType = "questions" | "flashcards" | "summaries" | "subjects" | "topics";
 

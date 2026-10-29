@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { ApiResponseError, readApiJson } from "@/lib/apiJson";
 
 export type SecureContentType = "questions" | "flashcards" | "summaries" | "subjects" | "topics";
 
@@ -37,16 +38,19 @@ export async function validAccessToken(forceRefresh = false): Promise<{ token: s
 
 async function requestContent<T>(url: string, token: string): Promise<T[]> {
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     cache: "no-store",
   });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new SecureContentError(payload.error || "Não foi possível carregar o conteúdo", response.status);
+  try {
+    const payload = await readApiJson<{ data?: T[] }>(response, "Não foi possível carregar o conteúdo");
+    if (!Array.isArray(payload.data)) {
+      throw new SecureContentError("O serviço de estudos retornou uma resposta inválida. Tente novamente.", 502);
+    }
+    return payload.data;
+  } catch (error) {
+    if (error instanceof ApiResponseError) throw new SecureContentError(error.message, error.status);
+    throw error;
   }
-
-  const payload = await response.json();
-  return (payload.data ?? []) as T[];
 }
 
 export async function fetchSecureContent<T>(

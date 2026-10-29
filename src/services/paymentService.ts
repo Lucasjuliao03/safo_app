@@ -3,6 +3,7 @@
  * O Access Token do Mercado Pago NUNCA é acessado aqui.
  */
 import { supabase } from "@/lib/supabase";
+import { readApiJson } from "@/lib/apiJson";
 
 export interface Plan {
   id: string;
@@ -39,17 +40,13 @@ export async function createPaymentPreference(planId: string): Promise<string> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({ planId }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || "Erro ao criar preferência de pagamento");
-  }
-
-  const { initPoint } = await response.json();
+  const { initPoint } = await readApiJson<{ initPoint?: string }>(response, "Erro ao criar preferência de pagamento");
   if (!initPoint) throw new Error("init_point não recebido do servidor");
   return initPoint;
 }

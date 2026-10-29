@@ -9,6 +9,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { config } from 'dotenv';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { resolveVercelRewrite } from './helpers/vercelRewrite';
 
 describe.skipIf(process.env.SAFO_LIVE_E2E !== '1')('CHO real student and mentoring lifecycle', () => {
   const runId = randomUUID();
@@ -51,19 +52,19 @@ describe.skipIf(process.env.SAFO_LIVE_E2E !== '1')('CHO real student and mentori
     if (edicts.error) throw edicts.error;
     editalId = Number(edicts.data.id);
 
-    const contentHandler = (await import('../../api/content/[type]')).default;
+    const contentHandler = (await import('../../api/content')).default;
     const enrollmentHandler = (await import('../../api/mentoria/enroll')).default;
     server = createServer(async (incoming, outgoing) => {
       try {
-        const url = new URL(incoming.url!, 'http://127.0.0.1');
-        const match = url.pathname.match(/^\/api\/content\/(subjects|topics|questions|flashcards|summaries)$/);
+        const originalUrl = new URL(incoming.url!, 'http://127.0.0.1');
+        const rewrite = resolveVercelRewrite(originalUrl.pathname);
+        const url = rewrite ? new URL(rewrite, originalUrl) : originalUrl;
         const req = incoming as VercelRequest;
-        req.query = Object.fromEntries(url.searchParams);
-        if (match) req.query.type = match[1];
+        req.query = { ...Object.fromEntries(originalUrl.searchParams), ...Object.fromEntries(url.searchParams) };
         const res = outgoing as VercelResponse;
         res.status = code => { res.statusCode = code; return res; };
         res.json = body => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)); return res; };
-        if (match) await contentHandler(req, res);
+        if (url.pathname === '/api/content') await contentHandler(req, res);
         else if (url.pathname === '/api/mentoria/enroll') await enrollmentHandler(req, res);
         else res.status(404).json({ error: 'Route not found' });
       } catch {

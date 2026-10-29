@@ -70,7 +70,7 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
         // podem compartilhar a latência de rede em vez de formar uma cascata.
         const [
           profileResult,
-          subjectsResult,
+          subjects,
           questions,
           flashcards,
           summaries,
@@ -79,7 +79,7 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
           summaryViewsResult,
         ] = await Promise.all([
           supabase.from('profiles').select('exam_date').eq('id', userId).maybeSingle(),
-          supabase.from('subjects').select('id, name').order('name'),
+          fetchSecureContent<{ id: number; name: string }>('subjects', { courseId: cid }),
           fetchSecureContent<any>('questions', { courseId: cid }),
           fetchSecureContent<any>('flashcards', { courseId: cid }),
           fetchSecureContent<any>('summaries', { courseId: cid }),
@@ -89,7 +89,6 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
         ]);
 
         const profileData = profileResult.data;
-        const subjects = subjectsResult.data || [];
 
         const examDate = profileData?.exam_date ? String(profileData.exam_date).split('T')[0] : null;
         const examDateFormatted = examDate 
@@ -193,7 +192,7 @@ export function useStudentEvolution(userId: string | undefined, courseId: string
         };
       } catch (error) {
         console.error('[useStudentEvolution] Erro:', error);
-        return getEmptyEvolution();
+        throw error;
       }
     },
     enabled: !!userId && !!courseId,

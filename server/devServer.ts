@@ -77,7 +77,7 @@ async function resolveHandler(pathname: string): Promise<{ handler: Handler; typ
 
   const contentMatch = pathname.match(/^\/api\/content\/(questions|flashcards|summaries|subjects|topics)$/);
   if (contentMatch) {
-    return { handler: (await import("../api/content/[type].js")).default, type: contentMatch[1] };
+    return { handler: (await import("../api/content.js")).default, type: contentMatch[1] };
   }
   return null;
 }

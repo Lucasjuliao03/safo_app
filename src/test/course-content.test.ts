@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from '../../api/content/[type]';
+import handler from '../../api/content';
 import enroll from '../../api/mentoria/enroll';
 
 const state = vi.hoisted(() => ({

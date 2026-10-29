@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import handler from '../../api/content/[type]';
+import handler from '../../api/content';
 
 const live = vi.hoisted(() => ({ db: null as SupabaseClient | null, userId: '' }));
 vi.mock('../../server/supabaseAdmin.js', () => ({

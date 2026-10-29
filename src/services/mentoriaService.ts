@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { fetchSecureContent, validAccessToken } from './secureContentService';
+import { readApiJson } from '@/lib/apiJson';
 
 // ============================================================================
 // SERVIÇOS DE MENTORIA - OPERAÇÕES CRUD COM SUPABASE
@@ -130,12 +131,10 @@ export async function getSubjectsWithTopicsForCourse(courseId: string): Promise<
 export async function enrollInMentoria(): Promise<void> {
   const { token } = await validAccessToken();
   const response = await fetch('/api/mentoria/enroll', {
-    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || 'Não foi possível ativar a mentoria.');
-  }
+  const body = await readApiJson<{ status?: string }>(response, 'Não foi possível ativar a mentoria.');
+  if (body.status !== 'active') throw new Error('Não foi possível confirmar a ativação da mentoria.');
 }
 
 export async function getMyMentoriaStatus(userId: string) {
