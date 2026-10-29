@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildStats, ranks } from "@/services/statsService";
-import { isUserActive, canAccessContent, getRemainingUsage } from "@/services/accessService";
+import { useAccessStatus } from "@/hooks/useAccessStatus";
 import { useSubjects, useQuestions, useUserProfile, useUserProductivity, useUserQuestionStats, useCourses } from "@/hooks/useStudyData";
 import { NextMissionCard } from "@/components/NextMissionCard";
 import { useDailyMission } from "@/hooks/useMission";
@@ -14,7 +14,8 @@ import { useStudentEvolution } from "@/hooks/useStudentEvolution";
 import { formatDisplayName } from "@/hooks/useNickname";
 
 export default function HomePage() {
-  const { user, isApproved, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const accessStatus = useAccessStatus();
   const courseId = user?.courseId ? String(user.courseId) : null;
 
   const { data: courses = [], isLoading: isLoadingCourses } = useCourses();
@@ -45,12 +46,7 @@ export default function HomePage() {
   const course = courses.find((c) => c.id === courseId);
 
   const stats = buildStats(profile, todayProd);
-  const answeredCount = todayProd?.questions_answered ?? 0;
-  const flashcardsCount = todayProd?.flashcards_reviewed ?? 0;
-  const totalUsage = answeredCount + flashcardsCount;
-  const active = isUserActive(user);
-  const hasAccess = active && canAccessContent(user, totalUsage);
-  const remaining = getRemainingUsage(user, totalUsage);
+  const remaining = accessStatus.trialRemaining;
 
   if (isLoadingSub || isLoadingQ || isLoadingCourses) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando...</div></AppLayout>;
@@ -81,7 +77,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {!isApproved && !hasAccess && (
+        {!accessStatus.isLoading && accessStatus.isOnTrial && !accessStatus.canAccess && (
           <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-4 flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
             <div>
@@ -91,7 +87,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {!isApproved && hasAccess && remaining !== Infinity && (
+        {!accessStatus.isLoading && accessStatus.isOnTrial && accessStatus.canAccess && (
           <div className="rounded-2xl bg-warning/10 border border-warning/30 p-3 text-center">
             <p className="text-xs text-warning font-medium">⚡ Restam <span className="font-bold">{remaining}</span> questões gratuitas</p>
           </div>

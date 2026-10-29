@@ -12,10 +12,10 @@ const SELECTS: Record<ContentType, string> = {
   subjects: "id, name, description",
   topics: "id, name, subject_id, sort_order, target_course_ids",
   questions: `id, subject_id, topic_id, subtopic_id, question_type, difficulty, source_year, statement,
-    option_a, option_b, option_c, option_d, option_e, format, correct_option, explanation,
+    option_a, option_b, option_c, option_d, option_e, format,
     board_id, is_active, status, law_reference_id, exam_boards(name),
     topics(name, target_course_ids), law_references(name, short_name)`,
-  flashcards: `id, subject_id, topic_id, front_text, back_text, difficulty, law_reference_id,
+  flashcards: `id, subject_id, topic_id, front_text, difficulty, law_reference_id,
     is_active, status, topics(name, target_course_ids), law_references(name, short_name)`,
   summaries: `id, subject_id, topic_id, subtopic_id, title, format, content_html, content_markdown,
     sort_order, law_reference_id, is_active, status, topics(name, target_course_ids),
@@ -117,26 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       || (profile.is_active === true && (activeUntil === null || activeUntil > Date.now()));
 
     let trialLimit = Number.POSITIVE_INFINITY;
-    if (!entitled) {
-      if (type === "summaries") {
-        const { count, error } = await supabase
-          .from("user_summary_views")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id);
-        if (error) throw error;
-        trialLimit = (count ?? 0) >= 2 ? 0 : 2;
-      } else {
-        const { data: usage, error } = await supabase
-          .from("user_daily_productivity")
-          .select("questions_answered, flashcards_reviewed")
-          .eq("user_id", user.id);
-        if (error) throw error;
-        const total = (usage ?? []).reduce(
-          (sum, row) => sum + (row.questions_answered ?? 0) + (row.flashcards_reviewed ?? 0),
-          0,
-        );
-        trialLimit = total >= 10 ? 0 : 10;
-      }
+    if (!entitled && type === "summaries") {
+      const { count, error } = await supabase
+        .from("user_summary_views")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+      if (error) throw error;
+      trialLimit = (count ?? 0) >= 2 ? 0 : 2;
     }
 
     // The student's edital comes from the profile, never from query parameters.
@@ -168,10 +155,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return !lawId || lawIds.includes(lawId);
       });
 
-    // Apply the trial window before requested IDs so callers cannot enumerate
-    // the entire paid catalog by repeatedly changing an ID filter.
+    // The full course catalog is browsable. Corrections and card backs are
+    // delivered exclusively by /api/study after the atomic lifetime quota.
     rows = rows.slice(0, trialLimit);
     if (requestedIds.length) rows = rows.filter((row) => requestedIds.includes(Number(row.id)));
+    rows = rows.map(row => {
+      const { correct_option: _correct, explanation: _explanation, back_text: _back, ...catalogRow } = row;
+      return type === "summaries" ? row : catalogRow;
+    });
 
     return res.status(200).json({ data: rows, entitled, trialLimit });
   } catch (error) {

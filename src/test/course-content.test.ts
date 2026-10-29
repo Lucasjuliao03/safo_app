@@ -49,6 +49,7 @@ vi.mock('../../server/supabaseAdmin.js', () => ({
             : table === 'edital_law_references' ? [{ edital_id: 3, law_reference_id: 7 }]
             : table === 'questions' ? Array.from({ length: 24 }, (_, i) => ({
               id: i + 1, topics: topics[i % 4], law_reference_id: i < 20 ? 7 : 99,
+              correct_option: 'a', explanation: 'Resposta protegida',
               is_active: true, status: 'published',
             }))
             : table === 'mentoria_alunos' ? (payload ? [{ user_id: 'student', ...payload }] : state.enrollment ? [state.enrollment] : [])
@@ -102,14 +103,17 @@ describe('course catalog for a new CHO student', () => {
   it('ignores a forged course parameter', async () => {
     expect((await request('subjects', { courseId: '2' })).body.data?.map(row => row.id)).toEqual([1, 2, 3]);
   });
-  it('returns only the fixed trial window in the profile edital', async () => {
+  it('returns the complete course catalog without exposing corrections', async () => {
     const standard = await request('questions');
     const forged = await request('questions', { courseId: '2', lawIds: '99' });
-    expect(standard.body.data).toHaveLength(10);
+    expect(standard.body.data).toHaveLength(15);
+    expect(standard.body.data?.every(row => !('correct_option' in row) && !('explanation' in row))).toBe(true);
     expect(forged.body.data).toEqual(standard.body.data);
   });
-  it('does not allow ID enumeration outside the trial window', async () => {
-    expect((await request('questions', { ids: '19' })).body.data).toEqual([]);
+  it('allows selection anywhere in the catalog without revealing its correction', async () => {
+    const result = await request('questions', { ids: '19' });
+    expect(result.body.data?.map(row => row.id)).toEqual([19]);
+    expect(result.body.data?.[0]).not.toHaveProperty('correct_option');
   });
   it('rejects users without a course', async () => {
     state.profile.course_id = null;
@@ -122,9 +126,9 @@ describe('course catalog for a new CHO student', () => {
   it('rejects prototype names as content types', async () => {
     expect((await request('toString')).code).toBe(404);
   });
-  it('fails closed if trial usage cannot be checked', async () => {
+  it('keeps catalog browsing available independently of quota writes', async () => {
     state.usageError = true;
-    expect((await request('questions')).code).toBe(500);
+    expect((await request('questions')).code).toBe(200);
   });
 });
 

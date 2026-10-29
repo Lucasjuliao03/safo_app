@@ -4,17 +4,43 @@ import { Layers, CheckCircle2, XCircle, ChevronLeft, BookOpen, BookOpenIcon, X, 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAccessContent, isUserActive } from "@/services/accessService";
-import { useSubjects, useFlashcards, useRecordFlashcardReview, useUserProductivity, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
+import { isUserActive } from "@/services/accessService";
+import { useSubjects, useFlashcards, useRecordFlashcardReview, useTopics, useUserFlashcardReviews, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { StudyLoadError } from "@/components/StudyLoadError";
 import { Flashcard } from "@/types/study";
+import { useStudyAccess } from '@/hooks/useStudyAccess';
+import { isStudyLimitError, revealStudyFlashcard } from '@/services/studyAccessService';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
-function FlashcardViewer({ card, onRate }: {
+function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
   card: Flashcard;
   onRate: (rating: "wrong" | "hard" | "good" | "easy") => void;
+  onRevealed: () => void;
+  onBlocked: () => void;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [back, setBack] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [requestId] = useState(() => crypto.randomUUID());
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const reveal = async () => {
+    if (revealing) return;
+    if (back !== null) { setFlipped(!flipped); return; }
+    setRevealing(true);
+    try {
+      const response = await revealStudyFlashcard(Number(card.id), requestId);
+      onRevealed();
+      setBack(response.back || '');
+      setFlipped(true);
+      qc.setQueryData(['studyAccess', user?.id], response);
+    } catch (error) {
+      if (isStudyLimitError(error)) onBlocked();
+      toast.error(error instanceof Error ? error.message : 'Não foi possível revelar o flashcard.');
+    } finally { setRevealing(false); }
+  };
   const { data: subjects = [] } = useSubjects();
   const subject = subjects.find((s) => s.id === card.subjectId);
 
@@ -37,7 +63,7 @@ function FlashcardViewer({ card, onRate }: {
         )}
       </div>
 
-      <button onClick={() => setFlipped(!flipped)}
+      <button onClick={reveal} disabled={revealing}
         className="w-full min-h-[280px] rounded-2xl border border-border bg-card p-6 text-left transition-all active:scale-[0.98] relative overflow-hidden">
         <div className="absolute top-3 right-3">
           <span className="text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -50,7 +76,7 @@ function FlashcardViewer({ card, onRate }: {
           </div>
         ) : (
           <div className="pt-4 animate-flip-in">
-            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">{card.back}</p>
+            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">{back}</p>
           </div>
         )}
       </button>
@@ -78,9 +104,9 @@ function FlashcardViewer({ card, onRate }: {
           </div>
         </div>
       ) : (
-        <button onClick={() => setFlipped(true)}
+        <button onClick={reveal} disabled={revealing}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-semibold text-sm text-primary-foreground active:scale-[0.98] transition-all">
-          <RotateCcw className="h-4 w-4" /> Revelar Resposta
+          <RotateCcw className="h-4 w-4" /> {revealing ? 'Revelando...' : 'Revelar Resposta'}
         </button>
       )}
     </div>
@@ -88,7 +114,7 @@ function FlashcardViewer({ card, onRate }: {
 }
 
 export default function FlashcardsPage() {
-  const { user, isApproved, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
   const courseIdNum = user?.courseId ? Number(user.courseId) : null;
   const editalIdNum = user?.editalId ? Number(user.editalId) : null;
@@ -106,9 +132,11 @@ export default function FlashcardsPage() {
     isAdmin ? null : activeLawIds
   );
   const { data: userReviews = [], isLoading: loadingStats } = useUserFlashcardReviews(user?.id);
-  const { data: todayProd } = useUserProductivity(user?.id);
   
   const recordReview = useRecordFlashcardReview();
+  const { data: access, error: accessError } = useStudyAccess();
+  const [serverBlocked, setServerBlocked] = useState(false);
+  const [revealedCurrent, setRevealedCurrent] = useState(false);
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -125,6 +153,7 @@ export default function FlashcardsPage() {
 
   // Triggered when a topic is chosen: build the queue ONCE so it doesn't shuffle mid-session
   const startSession = (topicId: string) => {
+    setRevealedCurrent(false);
     setSelectedTopicId(topicId);
     setCurrentIndex(0);
     setIsFinished(false);
@@ -160,18 +189,17 @@ export default function FlashcardsPage() {
     setSessionQueue(sorted);
   };
 
-  const answeredCount = todayProd?.questions_answered ?? 0;
-  const flashcardsCount = todayProd?.flashcards_reviewed ?? 0;
-  const totalUsage = answeredCount + flashcardsCount;
   const active = isUserActive(user);
-  const limitReached = !canAccessContent(user, totalUsage);
 
   if (!active) {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
   }
 
-  if (limitReached && !isApproved) {
-    return <AppLayout><BlockedOverlay answeredCount={totalUsage} reason="limit_reached" /></AppLayout>;
+  if (selectedTopicId && !revealedCurrent && ((serverBlocked && !access?.entitled) || (access && !access.entitled && access.remaining === 0))) {
+    return <AppLayout><BlockedOverlay answeredCount={access?.used ?? 10} reason="limit_reached" /></AppLayout>;
+  }
+  if (selectedTopicId && accessError) {
+    return <AppLayout><StudyLoadError error={accessError} /></AppLayout>;
   }
 
   if (!isAdmin && !courseId) {
@@ -317,6 +345,7 @@ export default function FlashcardsPage() {
   }
 
   const handleRate = (rating: "wrong" | "hard" | "good" | "easy") => {
+    setRevealedCurrent(false);
     if (user && sessionQueue[currentIndex]) {
       recordReview.mutate({
         userId: user.id,
@@ -356,6 +385,8 @@ export default function FlashcardsPage() {
           key={currentFlashcard.id}
           card={currentFlashcard}
           onRate={handleRate}
+          onRevealed={() => setRevealedCurrent(true)}
+          onBlocked={() => setServerBlocked(true)}
         />
       </div>
     </AppLayout>

@@ -1,18 +1,14 @@
 /**
  * useAccessStatus — hook que retorna o status de acesso do usuário autenticado.
  *
- * Mantém compatibilidade total com a lógica existente em accessService.ts:
- * - trial é baseado em user_daily_productivity (questões + flashcards do dia)
+ * O servidor é a fonte do acesso e da quota:
+ * - trial usa o contador privado vitalício do servidor (questões + flashcards)
  * - is_active + active_until do perfil controlam o acesso pago
  */
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  canAccessContent,
-  isUserActive,
-  FREE_USAGE_LIMIT,
-} from "@/services/accessService";
-import { useUserLifetimeUsage } from "@/hooks/useStudyData";
+import { FREE_USAGE_LIMIT } from "@/services/accessService";
+import { useStudyAccess } from './useStudyAccess';
 
 export type AccessReason =
   | "admin"
@@ -34,9 +30,7 @@ export interface AccessStatus {
 
 export function useAccessStatus(): AccessStatus {
   const { user, isAdmin, loading: authLoading } = useAuth();
-  const { data: lifetimeProd, isLoading: prodLoading } = useUserLifetimeUsage(
-    user?.id
-  );
+  const { data: access, isLoading: prodLoading } = useStudyAccess();
 
   return useMemo<AccessStatus>(() => {
     const isLoading = authLoading || prodLoading;
@@ -78,23 +72,20 @@ export function useAccessStatus(): AccessStatus {
       };
     }
 
-    // Conta uso na vida toda (questões + flashcards + resumos) para o Trial
-    const questionsAndFlashcards = lifetimeProd?.questionsAndFlashcards ?? 0;
-    const summariesCount = lifetimeProd?.summaries ?? 0;
-    const totalUsage = questionsAndFlashcards + summariesCount;
+    // Resumos têm limite próprio; a quota de estudo é independente da produtividade.
+    const totalUsage = access?.used ?? FREE_USAGE_LIMIT;
 
-    const active = isUserActive(user);
-    const isPaid = user.isApproved; // profiles.is_active
+    const isPaid = access?.entitled === true;
     const accessExpiresAt = user.activeUntil ?? null;
 
     // Usuário pago com acesso expirado
-    if (!active && isPaid) {
+    if (access?.expired) {
       return {
         canAccess: false,
         reason: "expired",
         trialRemaining: 0,
         accessExpiresAt,
-        isPaid: true,
+        isPaid: false,
         isOnTrial: false,
         isLoading: false,
       };
@@ -114,7 +105,7 @@ export function useAccessStatus(): AccessStatus {
     }
 
     // Usuário no trial
-    const canAccess = canAccessContent(user, totalUsage);
+    const canAccess = !!access && totalUsage < FREE_USAGE_LIMIT;
     const trialRemaining = Math.max(0, FREE_USAGE_LIMIT - totalUsage);
 
     return {
@@ -126,5 +117,5 @@ export function useAccessStatus(): AccessStatus {
       isOnTrial: true,
       isLoading: false,
     };
-  }, [user, isAdmin, authLoading, prodLoading, lifetimeProd]);
+  }, [user, isAdmin, authLoading, prodLoading, access]);
 }

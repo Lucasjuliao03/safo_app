@@ -1,5 +1,5 @@
 export class ApiResponseError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly code?: string) {
     super(message);
     this.name = 'ApiResponseError';
   }
@@ -25,7 +25,9 @@ export async function readApiJson<T extends object>(response: Response, fallback
   }
   if (!response.ok) {
     const message = (payload as { error?: unknown }).error;
-    throw new ApiResponseError(typeof message === 'string' ? message : fallbackMessage, response.status);
+    const code = (payload as { code?: unknown }).code;
+    throw new ApiResponseError(typeof message === 'string' ? message : fallbackMessage, response.status,
+      typeof code === 'string' ? code : undefined);
   }
   return payload as T;
 }

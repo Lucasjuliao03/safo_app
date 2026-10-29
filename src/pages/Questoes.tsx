@@ -5,33 +5,45 @@ import { CheckCircle2, XCircle, ChevronRight, Filter, BookOpen, BookOpenIcon, Sp
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAccessContent, isUserActive } from "@/services/accessService";
-import { useSubjects, useQuestions, useRecordAnswer, useUserProductivity, useTopics, useUserQuestionStats, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
+import { isUserActive } from "@/services/accessService";
+import { useSubjects, useQuestions, useRecordAnswer, useTopics, useUserQuestionStats, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
 import { useMemo } from "react";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
 import { StudyLoadError } from "@/components/StudyLoadError";
+import { useStudyAccess } from '@/hooks/useStudyAccess';
+import { isStudyLimitError, type StudyFeedback } from '@/services/studyAccessService';
+import { toast } from 'sonner';
 
 function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext, onAnswer }: {
   question: Question;
   subjectName?: string;
   subjectIcon?: React.ComponentType<{ className?: string }>;
   onNext: () => void;
-  onAnswer: (isCorrect: boolean, selectedOption: string) => void;
+  onAnswer: (selectedOption: string, requestId: string) => Promise<StudyFeedback>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const isCorrect = selected === question.correctOption;
+  const [feedback, setFeedback] = useState<StudyFeedback | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestId] = useState(() => crypto.randomUUID());
+  const isCorrect = feedback?.isCorrect === true;
 
-  const handleConfirm = () => {
-    if (selected) {
+  const handleConfirm = async () => {
+    if (!selected || submitting || confirmed) return;
+    setSubmitting(true);
+    try {
+      const response = await onAnswer(selected, requestId);
+      setFeedback(response);
       setConfirmed(true);
-      onAnswer(selected === question.correctOption, selected);
-    }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível confirmar sua resposta.');
+    } finally { setSubmitting(false); }
   };
 
   const handleNext = () => {
     setSelected(null);
     setConfirmed(false);
+    setFeedback(null);
     onNext();
   };
 
@@ -69,7 +81,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
         {question.options.map((opt, index) => {
           const letter = question.format === 'true_false' ? opt.id.toUpperCase() : ['A', 'B', 'C', 'D', 'E'][index] || '?';
           const isSelected = selected === opt.id;
-          const isRight = opt.id === question.correctOption;
+          const isRight = opt.id === feedback?.correctOption;
           let optStyle = "bg-card border-border hover:border-primary/40";
           if (confirmed) {
             if (isRight) optStyle = "bg-success/10 border-success/40";
@@ -97,11 +109,11 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
       </div>
 
       {!confirmed ? (
-        <button onClick={handleConfirm} disabled={!selected}
+        <button onClick={handleConfirm} disabled={!selected || submitting}
           className={cn("w-full rounded-xl py-3.5 font-semibold text-sm transition-all",
             selected ? "bg-primary text-primary-foreground active:scale-[0.98]" : "bg-muted text-muted-foreground cursor-not-allowed"
           )}>
-          Confirmar Resposta
+          {submitting ? 'Confirmando...' : 'Confirmar Resposta'}
         </button>
       ) : (
         <div className="space-y-3 animate-slide-up">
@@ -112,7 +124,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
                 {isCorrect ? "Resposta Correta!" : "Resposta Incorreta"}
               </span>
             </div>
-            <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{question.explanation}</p>
+            <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{feedback?.explanation}</p>
           </div>
           <button onClick={handleNext}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-semibold text-sm text-primary-foreground active:scale-[0.98] transition-all">
@@ -125,7 +137,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
 }
 
 export default function QuestoesPage() {
-  const { user, isApproved, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const courseId = user?.courseId ? String(user.courseId) : null;
   const courseIdNum = user?.courseId ? Number(user.courseId) : null;
   const editalIdNum = user?.editalId ? Number(user.editalId) : null;
@@ -143,9 +155,11 @@ export default function QuestoesPage() {
     isAdmin ? undefined : courseId,
     isAdmin ? null : activeLawIds
   );
-  const { data: todayProd } = useUserProductivity(user?.id);
   const { data: qStats = [], isLoading: loadingStats } = useUserQuestionStats(user?.id);
   const recordAnswer = useRecordAnswer();
+  const { data: access, error: accessError } = useStudyAccess();
+  const [serverBlocked, setServerBlocked] = useState(false);
+  const [answeredCurrent, setAnsweredCurrent] = useState(false);
 
   const [selectedFormat, setSelectedFormat] = useState<"multiple_choice" | "true_false" | null>(null);
   const [selectedSource, setSelectedSource] = useState<"all" | "ia" | "banca" | null>(null);
@@ -179,6 +193,7 @@ export default function QuestoesPage() {
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const startSession = (topicId: string) => {
+    setAnsweredCurrent(false);
     setSelectedTopicId(topicId);
     setCurrentIndex(0);
     setIsFinished(false);
@@ -214,24 +229,25 @@ export default function QuestoesPage() {
     setSessionQueue(sorted);
   };
 
-  const answeredCount = todayProd?.questions_answered ?? 0;
-  const flashcardsCount = todayProd?.flashcards_reviewed ?? 0;
-  const totalUsage = answeredCount + flashcardsCount;
   const active = isUserActive(user);
-  const limitReached = !canAccessContent(user, totalUsage);
 
-  const handleAnswer = (isCorrect: boolean, selectedOption: string) => {
+  const handleAnswer = async (selectedOption: string, requestId: string) => {
     if (user && sessionQueue[currentIndex]) {
-      recordAnswer.mutate({
-        userId: user.id,
-        questionId: parseInt(sessionQueue[currentIndex].id),
-        selectedOption,
-        isCorrect,
-      });
+      try {
+        const response = await recordAnswer.mutateAsync({ userId: user.id,
+          questionId: parseInt(sessionQueue[currentIndex].id), selectedOption, requestId });
+        setAnsweredCurrent(true);
+        return response;
+      } catch (error) {
+        if (isStudyLimitError(error)) setServerBlocked(true);
+        throw error;
+      }
     }
+    throw new Error('Selecione uma questão para continuar.');
   };
 
   const handleNext = () => {
+    setAnsweredCurrent(false);
     if (currentIndex + 1 >= sessionQueue.length) {
       setIsFinished(true);
     } else {
@@ -243,8 +259,11 @@ export default function QuestoesPage() {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
   }
   
-  if (limitReached && !isApproved) {
-    return <AppLayout><BlockedOverlay answeredCount={totalUsage} reason="limit_reached" /></AppLayout>;
+  if (selectedTopicId && !answeredCurrent && !recordAnswer.isPending && ((serverBlocked && !access?.entitled) || (access && !access.entitled && access.remaining === 0))) {
+    return <AppLayout><BlockedOverlay answeredCount={access?.used ?? 10} reason="limit_reached" /></AppLayout>;
+  }
+  if (selectedTopicId && accessError) {
+    return <AppLayout><StudyLoadError error={accessError} /></AppLayout>;
   }
 
   if (!isAdmin && !courseId) {

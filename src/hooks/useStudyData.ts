@@ -6,6 +6,7 @@ import { ACHIEVEMENTS } from '@/types/achievements';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import { Scale, FileText, BookOpen, Building2, Users, PenTool, BookOpenIcon } from 'lucide-react';
 import { fetchSecureContent } from '@/services/secureContentService';
+import { answerStudyQuestion } from '@/services/studyAccessService';
 
 /* ═══════════════════════════════════════════════════════ */
 /*  ICON MAP (UI only — not stored in DB)                 */
@@ -124,7 +125,7 @@ export function useQuestions(courseId?: string | null, activeLawIds?: number[] |
           organ: q.format === 'true_false' ? 'Certo/Errado' : (q.question_type === 'ia' ? 'IA' : 'Banca'),
           statement: q.statement,
           options,
-          correctOption: q.correct_option.toLowerCase(),
+          correctOption: q.correct_option?.toLowerCase() || '',
           explanation: q.explanation || "",
           format: q.format || "multiple_choice",
         };
@@ -153,7 +154,7 @@ export function useFlashcards(courseId?: string | null, activeLawIds?: number[] 
         lawReferenceName: (f as any).law_references?.short_name || (f as any).law_references?.name || null,
         topic: f.topics?.name || "Geral",
         front: f.front_text,
-        back: f.back_text,
+        back: f.back_text || '',
       }));
     },
     staleTime: 1000 * 60 * 10,
@@ -286,7 +287,10 @@ export function useRecordAnswer() {
   const notifications = useNotificationContext();
   
   return useMutation({
-    mutationFn: async (vars: { userId: string; questionId: number; selectedOption: string; isCorrect: boolean }) => {
+    mutationFn: async (vars: { userId: string; questionId: number; selectedOption: string; isCorrect?: boolean; requestId?: string }) => {
+      const feedback = await answerStudyQuestion(vars.questionId, vars.selectedOption, vars.requestId || crypto.randomUUID());
+      if (feedback.replayed) return feedback;
+      vars = { ...vars, isCorrect: feedback.isCorrect === true };
       // 1. Insert attempt
       const { error: attErr } = await supabase.from('question_attempts').insert({
         user_id: vars.userId,
@@ -545,8 +549,11 @@ export function useRecordAnswer() {
       } catch (e) {
         console.error('[useRecordAnswer] Erro geral nas conquistas:', e);
       }
+      return feedback;
     },
-    onSuccess: () => {
+    onSuccess: (feedback, variables) => {
+      if (feedback) qc.setQueryData(['studyAccess', variables.userId], feedback);
+      qc.invalidateQueries({ queryKey: ['studyAccess'] });
       qc.invalidateQueries({ queryKey: ['userProfile'] });
       qc.invalidateQueries({ queryKey: ['userProductivity'] });
       qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });

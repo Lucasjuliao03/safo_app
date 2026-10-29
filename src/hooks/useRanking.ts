@@ -28,6 +28,7 @@ export interface RankingUser {
   finalScore: number;
   accuracy: number;
   isCurrentUser?: boolean;
+  isDemo?: boolean;
 }
 
 export interface WeeklyChallenge {

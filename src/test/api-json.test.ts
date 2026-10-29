@@ -24,6 +24,12 @@ describe('API response contract', () => {
     });
     expect(await readApiJson(response, 'Falha')).toEqual({ data: [] });
   });
+  it('preserves the machine code to distinguish a used-up trial from other access errors', async () => {
+    const response = new Response(JSON.stringify({ error: 'Ative sua conta.', code: 'trial_exhausted' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+    await expect(readApiJson(response, 'Falha')).rejects.toMatchObject({ status: 403, code: 'trial_exhausted' });
+  });
   it.each(['null', '42', '[]'])('rejects invalid API envelopes: %s', async body => {
     const response = new Response(body, { headers: { 'Content-Type': 'application/json' } });
     await expect(readApiJson(response, 'Falha')).rejects.toMatchObject({ status: 502 });

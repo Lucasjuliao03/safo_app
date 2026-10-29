@@ -111,7 +111,10 @@ describe.skipIf(process.env.SAFO_LIVE_E2E !== '1')('CHO real student and mentori
     for (const type of ['subjects', 'topics', 'questions', 'flashcards', 'summaries'] as const) {
       const rows = await fetchSecureContent<{ id: number }>(type, { courseId });
       expect(rows.length, type).toBeGreaterThan(0);
-      if (type === 'questions') expect(rows.length).toBeLessThanOrEqual(10);
+      if (type === 'questions') {
+        expect(rows.length).toBeGreaterThan(10);
+        expect(rows.every(row => !('correct_option' in row))).toBe(true);
+      }
       counts[type] = rows.length;
     }
     console.log(JSON.stringify({ stage: 'real_student_materials', counts }));

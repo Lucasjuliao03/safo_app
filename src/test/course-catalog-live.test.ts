@@ -38,7 +38,10 @@ describe.skipIf(process.env.SAFO_LIVE_READONLY !== '1')('live CHO catalog (read 
       await handler({ method: 'GET', headers: {}, query: { type, courseId: '2' } } as unknown as VercelRequest, res);
       expect(code, body.error).toBe(200);
       expect(body.data?.length).toBeGreaterThan(0);
-      if (type === 'questions') expect(body.data!.length).toBeLessThanOrEqual(10);
+      if (type === 'questions') {
+        expect(body.data!.length).toBeGreaterThan(10);
+        expect(body.data!.every(row => !('correct_option' in (row as object)))).toBe(true);
+      }
       console.log(JSON.stringify({ type, status: code, visibleRows: body.data?.length }));
     }, 20_000);
   }

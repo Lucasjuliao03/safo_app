@@ -23,6 +23,10 @@ npm audit --omit=dev
 
 O primeiro comando executa TypeScript, ESLint, testes automatizados e build de produção. Consulte [docs/PRODUCTION_ROLLOUT.md](docs/PRODUCTION_ROLLOUT.md) antes de publicar.
 
+## Comparação de estudo no ranking
+
+Na página de ranking de cada curso, a comparação com 78 perfis fictícios, identificados como demonstração, aparece por padrão. O aluno pode ocultar esses perfis pelo controle de comparação. Os nomes e as estatísticas são determinísticos por curso e período, sem mudar em atualizações ou visitas futuras. Funciona automaticamente também para cursos novos, sem gravar contas, atividades ou posições no banco; o ranking oficial continua usando apenas participantes reais.
+
 ## Arquitetura de segurança
 
 - Conteúdo sujeito a assinatura é entregue por `/api/content/*`, após autenticação e validação de acesso no servidor.

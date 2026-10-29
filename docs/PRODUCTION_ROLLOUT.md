@@ -38,6 +38,16 @@ A migration restringe dados pessoais, impede autoelevação de privilégio, fech
 
 ## 5. Gate de lançamento
 
+### Catálogo completo e degustação de dez usos
+
+Aplicar `supabase/migrations/20261029214747_enforce_lifetime_trial.sql` ANTES de publicar o frontend/API desta versão. A migração exige a baseline de segurança e cria um contador privado com bloqueio por conta. Sem ela, `/api/study` recusa o uso com 503; o sistema não usa contadores locais como fallback.
+
+O catálogo mostra todas as questões/flashcards do curso e edital, sem gabaritos, explicações ou versos. Confirmar uma questão ou revelar um flashcard consome um dos dez usos combinados, na vida toda da conta. Navegar e selecionar não consomem. Resumos mantêm o limite de dois já existente. Após dez usos, somente a ativação administrativa/assinatura vigente libera novas correções/revelações.
+
+A API autentica o usuário, usa somente o ID da sessão, valida o conteúdo no banco e chama uma função disponível apenas à service role. Requisições simultâneas são serializadas por conta; reenviar o mesmo requestId e conteúdo não cobra novamente nem permite escolher outro item com o mesmo requestId. Trocar curso, aba, navegador, limpar storage ou alterar produtividade não zera a quota privada.
+
+Executar os testes de PostgreSQL local em `src/test/trial-postgres.test.ts`. Depois de aplicar a migração, validar com conta temporária: catálogo inteiro, dez usos combinados, 11º bloqueado, login novamente ainda bloqueado e ativação liberando novo uso. Não publicar apenas o frontend antes de preparar o banco.
+
 Publicar a raiz do repositório na Vercel (preset Vite), incluindo `api/`, `server/` e `vercel.json`; enviar somente `dist/` publica apenas o frontend. O arquivo `api/content.ts` é a Function estática para a qual as rotas `/api/content/:type` são reescritas.
 
 Conferir o deploy com `GET /api/health` (200 JSON) e `GET /api/content/questions` sem sessão (401 JSON). Se o segundo retornar `200 text/html`, o deploy está atendendo a API pelo fallback da SPA. O funcionamento local com o Supabase não substitui essa verificação na URL publicada.

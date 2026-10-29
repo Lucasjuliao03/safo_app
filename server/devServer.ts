@@ -64,6 +64,9 @@ async function resolveHandler(pathname: string): Promise<{ handler: Handler; typ
   if (pathname === "/api/health") {
     return { handler: (await import("../api/health.js")).default };
   }
+  if (pathname === "/api/study") {
+    return { handler: (await import("../api/study.js")).default };
+  }
   if (pathname === "/api/payments/create-preference") {
     return { handler: (await import("../api/payments/create-preference.js")).default };
   }

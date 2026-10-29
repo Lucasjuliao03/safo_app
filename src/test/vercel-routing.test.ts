@@ -8,7 +8,7 @@ describe('Vercel SPA and function routing', () => {
     expect(rewrite(`/api/content/${type}`)).toBe(`/api/content?type=${type}`);
     expect(existsSync(resolve(process.cwd(), 'api/content.ts'))).toBe(true);
   });
-  it.each(['/api', '/api/health', '/api/content', '/api/mentoria/enroll', '/api/payments/webhook', '/api/unknown', '/assets/missing.js'])(
+  it.each(['/api', '/api/health', '/api/content', '/api/study', '/api/mentoria/enroll', '/api/payments/webhook', '/api/unknown', '/assets/missing.js'])(
     'never rewrites %s to the SPA HTML', path => { expect(rewrite(path)).toBeNull(); },
   );
   it.each(['/questoes', '/mentoria', '/flashcards', '/resumos', '/'])('keeps browser navigation to %s working', path => {

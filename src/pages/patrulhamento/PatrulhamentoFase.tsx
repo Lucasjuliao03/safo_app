@@ -9,6 +9,9 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { sanitizeContentHtml } from '@/lib/sanitize';
+import { answerStudyQuestion, revealStudyFlashcard, isStudyLimitError } from '@/services/studyAccessService';
+import { useStudyAccess } from '@/hooks/useStudyAccess';
+import { BlockedOverlay } from '@/components/BlockedOverlay';
 
 export default function PatrulhamentoFase() {
   const { id } = useParams();
@@ -22,6 +25,10 @@ export default function PatrulhamentoFase() {
   const { data: flashcards, isLoading: loadingFlashcards } = useFlashcards(String(courseId));
 
   const completarMutation = useCompletarFase();
+  const { data: access, refetch: refreshAccess } = useStudyAccess();
+  const [trialBlocked, setTrialBlocked] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   
   const [fase, setFase] = useState<any>(null);
   const [nextFaseId, setNextFaseId] = useState<number | null>(null);
@@ -29,7 +36,7 @@ export default function PatrulhamentoFase() {
   // Estados de Execução (Questões e Flashcards)
   const [currentIndex, setCurrentIndex] = useState(0);
   const [acertos, setAcertos] = useState(0);
-  const [answeredState, setAnsweredState] = useState<{ selectedOptionId?: string, isCorrect?: boolean } | null>(null);
+  const [answeredState, setAnsweredState] = useState<{ selectedOptionId?: string, isCorrect?: boolean, correctOption?: string, explanation?: string, back?: string } | null>(null);
   const [itemsList, setItemsList] = useState<any[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -144,14 +151,34 @@ export default function PatrulhamentoFase() {
      handleCompleteSuccess();
   };
 
-  const handleAnswerQuestion = (optionId: string) => {
-      if (answeredState) return; // already answered
-      const isCorrect = optionId === currentInteractionItem.correctOption;
-      setAnsweredState({ selectedOptionId: optionId, isCorrect });
-      if (isCorrect) setAcertos(prev => prev + 1);
+  const handleAnswerQuestion = async (optionId: string) => {
+      if (answeredState || submitting) return;
+      setSubmitting(true);
+      try {
+        const feedback = await answerStudyQuestion(Number(currentInteractionItem.id), optionId, requestId);
+        setAnsweredState({ ...feedback, selectedOptionId: optionId });
+        if (feedback.isCorrect) setAcertos(prev => prev + 1);
+        refreshAccess();
+      } catch (error) {
+        if (isStudyLimitError(error)) setTrialBlocked(true);
+        toast.error(error instanceof Error ? error.message : 'Não foi possível confirmar a resposta.');
+      } finally { setSubmitting(false); }
+  };
+  const handleRevealCard = async () => {
+    if (answeredState || submitting) return;
+    setSubmitting(true);
+    try {
+      const feedback = await revealStudyFlashcard(Number(currentInteractionItem.id), requestId);
+      setAnsweredState(feedback);
+      refreshAccess();
+    } catch (error) {
+      if (isStudyLimitError(error)) setTrialBlocked(true);
+      toast.error(error instanceof Error ? error.message : 'Não foi possível revelar o flashcard.');
+    } finally { setSubmitting(false); }
   };
 
   const handleNextQuestion = () => {
+      setRequestId(crypto.randomUUID());
       if (currentIndex + 1 < itemsList.length) {
           setCurrentIndex(prev => prev + 1);
           setAnsweredState(null);
@@ -166,6 +193,10 @@ export default function PatrulhamentoFase() {
       }
   };
 
+  if (['questoes', 'checkpoint', 'flashcards'].includes(fase.tipo_fase) && !answeredState
+    && ((trialBlocked && !access?.entitled) || (access && !access.entitled && access.remaining === 0))) {
+    return <AppLayout><BlockedOverlay answeredCount={access?.used ?? 10} /></AppLayout>;
+  }
   if (showSuccess) {
      return (
        <div className="fixed inset-0 bg-success/20 backdrop-blur-sm z-[100] flex flex-col items-center justify-center animate-fade-in">
@@ -247,7 +278,7 @@ export default function PatrulhamentoFase() {
                             <div className="space-y-3">
                                {currentInteractionItem.options.map((opt: any, index: number) => {
                                   const isSelected = answeredState?.selectedOptionId === opt.id;
-                                  const isCorrectOption = opt.id === currentInteractionItem.correctOption;
+                                  const isCorrectOption = opt.id === answeredState?.correctOption;
                                   let btnClass = "bg-card border-border hover:border-primary/50 text-foreground";
                                   
                                   if (answeredState) {
@@ -259,7 +290,7 @@ export default function PatrulhamentoFase() {
                                   return (
                                      <button
                                         key={opt.id}
-                                        disabled={!!answeredState}
+                                        disabled={!!answeredState || submitting}
                                         onClick={() => handleAnswerQuestion(opt.id)}
                                         className={cn(
                                            "w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-3",
@@ -278,7 +309,7 @@ export default function PatrulhamentoFase() {
                             {answeredState && (
                                <div className={cn("p-4 rounded-xl border", answeredState.isCorrect ? "bg-success/10 border-success/30 text-success-foreground" : "bg-destructive/10 border-destructive/30 text-destructive-foreground")}>
                                   <h4 className="font-bold mb-1">{answeredState.isCorrect ? "Tiro Certeiro!" : "Alvo Errado"}</h4>
-                                  <p className="text-sm opacity-90">{currentInteractionItem.explanation || "Sem comentários do instrutor."}</p>
+                                  <p className="text-sm opacity-90">{answeredState.explanation || "Sem comentários do instrutor."}</p>
                                </div>
                             )}
                          </div>
@@ -299,12 +330,12 @@ export default function PatrulhamentoFase() {
                                 <>
                                   <h3 className="text-xs uppercase text-muted-foreground font-bold tracking-widest mb-4">Frente do Card {currentIndex + 1}/{itemsList.length}</h3>
                                   <p className="text-lg font-bold text-foreground">{currentInteractionItem.front}</p>
-                                  <button onClick={() => setAnsweredState({})} className="mt-8 px-6 py-2 bg-primary/10 text-primary font-bold rounded-full text-sm">Ver Verso</button>
+                                  <button disabled={submitting} onClick={handleRevealCard} className="mt-8 px-6 py-2 bg-primary/10 text-primary font-bold rounded-full text-sm">{submitting ? 'Revelando...' : 'Ver Verso'}</button>
                                 </>
                              ) : (
                                 <>
                                   <h3 className="text-xs uppercase text-success font-bold tracking-widest mb-4">Verso do Card</h3>
-                                  <p className="text-lg font-bold text-foreground">{currentInteractionItem.back}</p>
+                                  <p className="text-lg font-bold text-foreground">{answeredState.back}</p>
                                 </>
                              )}
                           </div>
