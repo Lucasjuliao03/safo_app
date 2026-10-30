@@ -24,6 +24,7 @@ export function useAdminUsers() {
         email: d.username || "",
         role: d.role as UserRole,
         isApproved: d.is_active,
+        accessBlocked: d.access_blocked === true,
         createdAt: d.created_at,
         courseId: d.course_id,
         editalId: d.edital_id,
@@ -38,7 +39,7 @@ export function useApproveUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (userId: string) => {
-      const { error } = await supabase.from("profiles").update({ is_active: true }).eq("id", userId);
+      const { error } = await supabase.from("profiles").update({ is_active: true, active_until: null, access_blocked: false }).eq("id", userId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -51,7 +52,7 @@ export function useBlockUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (userId: string) => {
-      const { error } = await supabase.from("profiles").update({ is_active: false }).eq("id", userId);
+      const { error } = await supabase.from("profiles").update({ is_active: false, access_blocked: true }).eq("id", userId);
       if (error) throw error;
     },
     onSuccess: () => {

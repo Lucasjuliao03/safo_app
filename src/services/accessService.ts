@@ -9,6 +9,7 @@ export const FREE_SUMMARY_LIMIT = 2;
 export function isUserActive(user: User | null): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
+  if (user.accessBlocked) return false;
   if (user.activeUntil) {
     const expiry = new Date(user.activeUntil).getTime();
     if (Date.now() > expiry) return false;

@@ -16,6 +16,7 @@ export type AccessReason =
   | "trial"
   | "trial_exhausted"
   | "expired"
+  | "account_blocked"
   | "unavailable"
   | "loading";
 
@@ -83,7 +84,9 @@ export function useAccessStatus(): AccessStatus {
     const totalUsage = access?.used ?? FREE_USAGE_LIMIT;
 
     const isPaid = access?.entitled === true;
-    const accessExpiresAt = user.activeUntil ?? null;
+    const accessExpiresAt = access?.accessExpiresAt ?? user.activeUntil ?? null;
+    if (access?.blocked) return { canAccess: false, reason: 'account_blocked', trialRemaining: 0,
+      accessExpiresAt, isPaid: false, isOnTrial: false, isLoading: false };
 
     // Usuário pago com acesso expirado
     if (access?.expired) {

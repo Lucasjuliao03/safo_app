@@ -1,3 +1,5 @@
+-- LEGADO: não reaplique sobre a versão atual. Use sql/INSTALAR_CORRECAO_PAGAMENTOS.sql.
+-- Roteiro atualizado: docs/PAGAMENTOS_PRODUCAO.md.
 -- ============================================================
 -- SISTEMA DE PAGAMENTO — SAFO / Concurseiro Gil
 -- Execute no SQL Editor do Supabase

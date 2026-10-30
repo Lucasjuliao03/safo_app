@@ -11,9 +11,9 @@ export async function requireAppAccess(userId: string, res: VercelResponse): Pro
     return false;
   }
   if (!canUseApp(data)) {
-    res.status(403).json({ error: data.expired ? 'Seu acesso expirou. Renove seu plano.'
+    res.status(403).json({ error: data.blocked ? 'Acesso suspenso. Entre em contato com o suporte.' : data.expired ? 'Seu acesso expirou. Renove seu plano.'
       : 'Seu teste gratuito acabou. Escolha um plano para continuar.',
-    code: data.expired ? 'access_expired' : 'trial_exhausted' });
+    code: data.blocked ? 'account_blocked' : data.expired ? 'access_expired' : 'trial_exhausted' });
     return false;
   }
   return true;

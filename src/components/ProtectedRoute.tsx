@@ -41,8 +41,8 @@ function AppAccessGate({ children }: { children: ReactNode }) {
     <StudyLoadError error={error} /><Link className="block text-center text-primary" to="/perfil">Meu perfil</Link>
   </div>;
   if (blocked) return <div className="dark min-h-screen bg-background text-foreground">
-    <BlockedOverlay answeredCount={access.used} reason={access.expired ? 'expired' : 'limit_reached'}>
-      {!access.expired && <LastStudyResult />}
+    <BlockedOverlay answeredCount={access.used} reason={access.blocked ? 'account_blocked' : access.expired ? 'expired' : 'limit_reached'}>
+      {!access.expired && !access.blocked && <LastStudyResult />}
     </BlockedOverlay>
   </div>;
   if (!valid || verifiedKey !== routeKey) return <div className="dark min-h-screen bg-background flex items-center justify-center" role="status">

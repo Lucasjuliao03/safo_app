@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
+import { PaymentRecovery } from '@/components/PaymentRecovery';
 import { SecureContentError } from "@/services/secureContentService";
 const Index = lazy(() => import("./pages/Index"));
 const Questoes = lazy(() => import("./pages/Questoes"));
@@ -158,6 +159,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <PaymentRecovery />
           <NotificationProvider>
             <AppRoutes />
           </NotificationProvider>

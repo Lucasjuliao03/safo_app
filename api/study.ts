@@ -52,6 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     return res.status(200).json(data);
   } catch (error) {
+    if (typeof error === 'object' && error !== null && 'message' in error && error.message === 'account_blocked') {
+      return res.status(403).json({ error: 'Acesso suspenso. Entre em contato com o suporte.', code: 'account_blocked' });
+    }
     const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : 'unknown';
     console.error('[study] request failed', { rpc, code });
     // Missing migration/network/database errors must never grant an extra use.

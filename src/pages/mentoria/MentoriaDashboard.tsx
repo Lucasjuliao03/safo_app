@@ -21,6 +21,7 @@ import {
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { getStudyDate } from '@/lib/studyDate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos internos do Wizard
@@ -673,18 +674,22 @@ export default function MentoriaDashboard() {
 
   const { data: mentoria, isLoading: loadingStatus, error: statusError } = useMentoriaStatus(user?.id);
   const { data: diagnostico, isLoading: loadingDiag, error: diagnosisError } = useMentoriaDiagnostico(user?.id);
-  const { data: estrategia, isLoading: loadingEst } = useMentoriaEstrategia(user?.id);
+  const { data: estrategia, isLoading: loadingEst, error: strategyError } = useMentoriaEstrategia(user?.id);
   const { data: intervencoes } = useStudentInterventions(user?.id);
 
-  const dateStr = new Date();
-  const startOfMonth = new Date(dateStr.getFullYear(), dateStr.getMonth(), 1).toISOString().split('T')[0];
-  const endOfMonth = new Date(dateStr.getFullYear(), dateStr.getMonth() + 1, 0).toISOString().split('T')[0];
-  const { data: monthTasks = [] } = useMentoriaTasks(user?.id, startOfMonth, endOfMonth);
+  const today = getStudyDate();
+  const dateStr = new Date(`${today}T12:00:00Z`);
+  const startOfMonth = `${today.slice(0, 7)}-01`;
+  const monthEnd = new Date(`${startOfMonth}T12:00:00Z`);
+  monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+  const endOfMonth = monthEnd.toISOString().slice(0, 10);
+  const { data: monthTasks = [], error: tasksError, isLoading: loadingTasks } = useMentoriaTasks(user?.id, startOfMonth, endOfMonth);
 
-  if (statusError || diagnosisError) {
-    return <AppLayout><StudyLoadError error={statusError || diagnosisError} /></AppLayout>;
+  if (statusError || diagnosisError || strategyError || tasksError) {
+    return <AppLayout><StudyLoadError error={statusError || diagnosisError || strategyError || tasksError}
+      fallbackMessage="Não foi possível carregar sua mentoria. Tente novamente ou entre em contato com o suporte." /></AppLayout>;
   }
-  if (loadingStatus || loadingDiag || loadingEst) {
+  if (loadingStatus || loadingDiag || loadingEst || loadingTasks) {
     return (
       <AppLayout>
         <div className="flex h-full items-center justify-center p-8 text-muted-foreground animate-pulse">

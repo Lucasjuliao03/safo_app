@@ -29,6 +29,7 @@ export async function fetchProfile(userId: string): Promise<User | null> {
     email: data.username || "user@example.com",
     role: data.role as UserRole,
     isApproved: data.is_active,
+    accessBlocked: data.access_blocked === true,
     createdAt: data.created_at,
     courseId: courseId,
     editalId: data.edital_id,
@@ -132,6 +133,7 @@ export async function getAllUsers(): Promise<User[]> {
     email: d.username || "",
     role: d.role as UserRole,
     isApproved: d.is_active,
+    accessBlocked: d.access_blocked === true,
     createdAt: d.created_at,
     courseId: d.course_id,
     activeUntil: d.active_until,
@@ -140,15 +142,17 @@ export async function getAllUsers(): Promise<User[]> {
 }
 
 export async function approveUser(userId: string, activeUntil?: string | null): Promise<void> {
-  const payload: any = { is_active: true };
+  const payload: any = { is_active: true, access_blocked: false };
   if (activeUntil !== undefined) {
     payload.active_until = activeUntil;
   }
-  await supabase.from("profiles").update(payload).eq("id", userId);
+  const { error } = await supabase.from("profiles").update(payload).eq("id", userId);
+  if (error) throw error;
 }
 
 export async function blockUser(userId: string): Promise<void> {
-  await supabase.from("profiles").update({ is_active: false }).eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ is_active: false, access_blocked: true }).eq("id", userId);
+  if (error) throw error;
 }
 
 export async function deleteUser(userId: string): Promise<void> {

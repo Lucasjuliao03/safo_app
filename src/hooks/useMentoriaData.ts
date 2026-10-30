@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as mentoriaService from '@/services/mentoriaService';
 import { supabase } from '@/lib/supabase';
+import { retryAppQuery } from '@/lib/queryRetry';
 
 // Hooks para o Aluno
 export function useMentoriaStatus(userId: string | undefined) {
   return useQuery({
     queryKey: ['mentoria_status', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getMyMentoriaStatus(userId) : null,
     enabled: !!userId,
   });
@@ -14,6 +16,7 @@ export function useMentoriaStatus(userId: string | undefined) {
 export function useMentoriaDiagnostico(userId: string | undefined) {
   return useQuery({
     queryKey: ['mentoria_diagnostico', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getDiagnostico(userId) : null,
     enabled: !!userId,
   });
@@ -22,6 +25,7 @@ export function useMentoriaDiagnostico(userId: string | undefined) {
 export function useMentoriaEstrategia(userId: string | undefined) {
   return useQuery({
     queryKey: ['mentoria_estrategia', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getEstrategia(userId) : null,
     enabled: !!userId,
   });
@@ -31,6 +35,8 @@ export function useMentoriaEstrategia(userId: string | undefined) {
 export function useMentoriaTasks(userId: string | undefined, startDate: string, endDate: string) {
   return useQuery({
     queryKey: ['mentoria_tasks', userId, startDate, endDate],
+    retry: retryAppQuery,
+    refetchOnWindowFocus: query => !query.state.error,
     queryFn: () => (userId && startDate && endDate) ? mentoriaService.getTasksByDateRange(userId, startDate, endDate) : [],
     enabled: !!userId && !!startDate && !!endDate,
   });
@@ -50,6 +56,7 @@ export function useCheckInTask() {
 export function useStudentAlerts(userId: string | undefined) {
   return useQuery({
     queryKey: ['mentoria_alerts', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getStudentAlerts(userId) : [],
     enabled: !!userId,
   });
@@ -58,6 +65,7 @@ export function useStudentAlerts(userId: string | undefined) {
 export function useStudentInterventions(userId: string | undefined) {
   return useQuery({
     queryKey: ['mentoria_interventions', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getStudentInterventions(userId) : [],
     enabled: !!userId,
   });
@@ -237,6 +245,7 @@ export function useAdminGenerateTasks() {
 export function useAdminStudentTasks(userId: string | undefined) {
   return useQuery({
     queryKey: ['admin_mentoring_tasks', userId],
+    retry: retryAppQuery,
     queryFn: () => userId ? mentoriaService.getAllStudentTasks(userId) : [],
     enabled: !!userId,
     staleTime: 0, // Forçar dados frescos

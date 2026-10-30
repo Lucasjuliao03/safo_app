@@ -73,6 +73,9 @@ async function resolveHandler(pathname: string): Promise<{ handler: Handler; typ
   if (pathname === "/api/payments/webhook") {
     return { handler: (await import("../api/payments/webhook.js")).default };
   }
+  if (pathname === "/api/payments/status") {
+    return { handler: (await import("../api/payments/status.js")).default };
+  }
 
   if (pathname === "/api/mentoria/enroll") {
     return { handler: (await import("../api/mentoria/enroll.js")).default };

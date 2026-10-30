@@ -10,6 +10,7 @@ const guardPattern = /^-- BEGIN STUDY INSTALL LOCK GUARD\r?\n[\s\S]*?^-- END STU
 const migrations = ['supabase/migrations/20261029214747_enforce_lifetime_trial.sql',
   'supabase/migrations/20261030004029_atomic_study_progress.sql',
   'supabase/migrations/20261030012116_global_app_access_gate.sql'];
+const policyHelpers = 'supabase/migrations/20261030040701_restore_curriculum_policy_helpers.sql';
 // Keep direct CLI migrations protected too. The combined installer acquires
 // these locks exactly once, before any migration or authorization helper.
 for (const migration of migrations) {
@@ -27,6 +28,7 @@ const helpers = baseline.slice(baseline.indexOf('CREATE OR REPLACE FUNCTION publ
   baseline.indexOf('-- Profiles:')).replace(/-- -+\s*$/, '');
 const output = `-- SAFO: executar este arquivo inteiro no SQL Editor do Supabase.\n-- Instala acesso e persistência de estudo juntos, sem apagar histórico.\n-- Use uma única aba. Se o banco estiver ocupado, a instalação aborta sem esperar.\nBEGIN;\n${guard}\n\n${helpers}\n`
   + migrations.map(migration => unwrap(read(migration))).join('\n')
+  + '\n' + unwrap(read(policyHelpers))
   + '\nCOMMIT;\n';
 const path = resolve(root, 'sql/INSTALAR_CORRECAO_ESTUDOS.sql');
 if (checking) {

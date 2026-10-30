@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { StudyLoadError } from '@/components/StudyLoadError';
+import { getStudyDate } from '@/lib/studyDate';
 import { useAuth } from "@/contexts/AuthContext";
 import { useMentoriaStatus, useMentoriaTasks, useCheckInTask } from "@/hooks/useMentoriaData";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
@@ -43,8 +45,7 @@ const playBeep = (type: 'start' | 'alarm' = 'start') => {
 export default function MentoriaExecucao() {
   const { user } = useAuth();
   
-  const localToday = new Date();
-  const today = localToday.toISOString().split('T')[0];
+  const today = getStudyDate();
   
   const searchParams = new URLSearchParams(window.location.search);
   const initialDate = searchParams.get('date') || today;
@@ -57,8 +58,8 @@ export default function MentoriaExecucao() {
     return baseDate.toISOString().split('T')[0];
   });
 
-  const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);
-  const { data: tasks = [], isLoading: loadingTasks } = useMentoriaTasks(user?.id, selectedDate, selectedDate);
+  const { data: mentoria, isLoading: loadingStatus, error: statusError } = useMentoriaStatus(user?.id);
+  const { data: tasks = [], isLoading: loadingTasks, error: tasksError } = useMentoriaTasks(user?.id, selectedDate, selectedDate);
   const checkInMutation = useCheckInTask();
 
   const [activeTask, setActiveTask] = useState<MentoriaTarefa | null>(null);
@@ -115,6 +116,8 @@ export default function MentoriaExecucao() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  if (statusError || tasksError) return <AppLayout><StudyLoadError error={statusError || tasksError}
+    fallbackMessage="Não foi possível carregar suas tarefas. Tente novamente ou entre em contato com o suporte." /></AppLayout>;
   if (loadingStatus || loadingTasks) {
     return <AppLayout><div className="flex justify-center p-8 text-muted-foreground">Carregando plano do dia...</div></AppLayout>;
   }

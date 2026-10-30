@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { fetchSecureContent, validAccessToken } from './secureContentService';
 import { readApiJson } from '@/lib/apiJson';
+import { getStudyDate } from '@/lib/studyDate';
 
 // ============================================================================
 // SERVIÇOS DE MENTORIA - OPERAÇÕES CRUD COM SUPABASE
@@ -231,7 +232,7 @@ export async function generateStudyPlan(input: PlanGeneratorInput): Promise<numb
     userId,
     subjects,
     diagnostico,
-    startDate = new Date().toISOString().split('T')[0],
+    startDate = getStudyDate(),
     weeksToGenerate: weeksOverride,
   } = input;
 
@@ -457,7 +458,7 @@ export async function generateStudyPlan(input: PlanGeneratorInput): Promise<numb
  * Tarefas com status != 'pending' (histórico) são preservadas.
  */
 export async function deletePendingFutureTasks(userId: string): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getStudyDate();
   const { error } = await supabase
     .from('mentoria_tarefas_diarias')
     .delete()

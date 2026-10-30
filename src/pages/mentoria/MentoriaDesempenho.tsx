@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { StudyLoadError } from '@/components/StudyLoadError';
 import { useAuth } from "@/contexts/AuthContext";
 import { useMentoriaStatus, useAdminStudentTasks } from "@/hooks/useMentoriaData";
 import { useUserQuestionStats } from "@/hooks/useStudyData";
@@ -36,8 +37,8 @@ function ProgressBar({ value, max, color }: { value: number, max: number, color:
 export default function MentoriaDesempenho() {
   const { user } = useAuth();
   
-  const { data: mentoria, isLoading: loadingStatus } = useMentoriaStatus(user?.id);
-  const { data: allTasks = [], isLoading: loadingTasks } = useAdminStudentTasks(user?.id);
+  const { data: mentoria, isLoading: loadingStatus, error: statusError } = useMentoriaStatus(user?.id);
+  const { data: allTasks = [], isLoading: loadingTasks, error: tasksError } = useAdminStudentTasks(user?.id);
   const { data: questionStats = [], isLoading: loadingStats } = useUserQuestionStats(user?.id);
 
   const metrics = useMemo(() => {
@@ -126,6 +127,8 @@ export default function MentoriaDesempenho() {
   }, [allTasks, questionStats]);
 
 
+  if (statusError || tasksError) return <AppLayout><StudyLoadError error={statusError || tasksError}
+    fallbackMessage="Não foi possível carregar os dados da sua mentoria. Tente novamente ou entre em contato com o suporte." /></AppLayout>;
   if (loadingStatus || loadingTasks || loadingStats) {
     return <AppLayout><div className="flex justify-center p-8 text-muted-foreground animate-pulse">Compilando seu desempenho...</div></AppLayout>;
   }

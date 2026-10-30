@@ -176,7 +176,7 @@ export default function PerfilPage() {
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground mt-1">
-                    {accessStatus.reason === 'unavailable' ? 'Status de acesso indisponível' : accessStatus.isOnTrial ? (
+                    {accessStatus.reason === 'account_blocked' ? 'Acesso suspenso — entre em contato com o suporte' : accessStatus.reason === 'unavailable' ? 'Status de acesso indisponível' : accessStatus.isOnTrial ? (
                       `Plano Gratuito (${accessStatus.trialRemaining} usos restantes)`
                     ) : (
                       "Acesso Expirado"
@@ -184,7 +184,7 @@ export default function PerfilPage() {
                   </p>
                 )}
               </div>
-              {accessStatus.reason !== 'unavailable' && <Link
+              {!['unavailable', 'account_blocked'].includes(accessStatus.reason) && <Link
                 to="/assinar"
                 className="bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
               >

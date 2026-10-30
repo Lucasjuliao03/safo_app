@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { BookOpen, Lock, Mail, User, Eye, EyeOff, ChevronRight, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,13 +18,16 @@ export default function LoginPage() {
   const { login, register, isAuthenticated, loading } = useAuth();
   const { data: courses = [] } = useCourses();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const requestedReturn = params.get('returnTo') ?? '';
+  const returnTo = /^\/pagamento\/(sucesso|pendente|falhou)(?:\?|$)/.test(requestedReturn) ? requestedReturn : '/';
 
   // If already logged in, redirect away
   useEffect(() => {
     if (isAuthenticated && !loading) {
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, loading, navigate, returnTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +47,7 @@ export default function LoginPage() {
       }
 
       if (result.success) {
-        navigate("/", { replace: true });
+        navigate(returnTo, { replace: true });
       } else {
         setError(result.error || "Erro ao processar. Tente novamente.");
       }

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
-import { fetchPlans, createPaymentPreference, Plan } from "@/services/paymentService";
+import { fetchPlans, fetchLastOrder, createPaymentPreference, Plan } from "@/services/paymentService";
+import { ApiResponseError } from '@/lib/apiJson';
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
 import {
@@ -130,16 +131,19 @@ function PlanCard({
 
 export default function AssinarPage() {
   const { user } = useAuth();
-  const { isPaid, accessExpiresAt } = useAccessStatus();
+  const { isPaid, accessExpiresAt, reason } = useAccessStatus();
   const navigate = useNavigate();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const requests = useRef<Record<string, string>>({});
 
-  const { data: plans = [], isLoading } = useQuery({
+  const { data: plans = [], isLoading, error: plansError } = useQuery({
     queryKey: ["plans"],
     queryFn: fetchPlans,
     staleTime: 1000 * 60 * 10,
   });
+  const { data: lastOrder } = useQuery({ queryKey: ['lastPaymentOrder', user?.id],
+    queryFn: () => fetchLastOrder(user!.id), enabled: !!user, staleTime: 0 });
 
   // Seleciona o primeiro plano por padrão quando os dados carregam
   useEffect(() => {
@@ -149,13 +153,15 @@ export default function AssinarPage() {
   }, [plans, selectedPlanId]);
 
   const handleSubscribe = async () => {
-    if (!selectedPlanId || isCheckingOut) return;
+    if (!selectedPlanId || isCheckingOut || reason === 'account_blocked') return;
     setIsCheckingOut(true);
     try {
-      const initPoint = await createPaymentPreference(selectedPlanId);
+      const requestId = requests.current[selectedPlanId] ??= crypto.randomUUID();
+      const initPoint = await createPaymentPreference(selectedPlanId, requestId);
       // Redireciona para o Mercado Pago
       window.location.href = initPoint;
     } catch (err: any) {
+      if (err instanceof ApiResponseError && err.code === 'checkout_finished') delete requests.current[selectedPlanId];
       toast.error("Erro ao iniciar pagamento", {
         description: err.message || "Tente novamente em instantes.",
       });
@@ -177,6 +183,7 @@ export default function AssinarPage() {
           <p className="text-sm text-muted-foreground leading-relaxed">
             Estude sem limites. Questões, flashcards, resumos e muito mais.
           </p>
+          <p className="text-xs text-muted-foreground">Pagamento único pelo período escolhido. Renovação manual.</p>
         </div>
 
         {/* Status de acesso atual */}
@@ -210,6 +217,10 @@ export default function AssinarPage() {
           </div>
         </div>
 
+        {lastOrder?.status === 'pending' && <button className="w-full rounded-xl border border-primary p-3 text-primary"
+          onClick={() => navigate(`/pagamento/pendente?order_id=${lastOrder.id}`)}>Acompanhar pagamento em andamento</button>}
+        {plansError && <p role="alert" className="text-sm text-destructive">Não foi possível carregar os planos. Atualize a página para tentar novamente.</p>}
+        {!isLoading && !plansError && plans.length === 0 && <p className="text-sm text-muted-foreground">Nenhum plano disponível no momento. Entre em contato com o suporte.</p>}
         {/* Planos */}
         {isLoading ? (
           <div className="space-y-3">
@@ -236,11 +247,12 @@ export default function AssinarPage() {
           </div>
         )}
 
+        {reason === 'account_blocked' && <p role="alert" className="text-destructive">Sua conta está suspensa. Entre em contato com o suporte antes de realizar um pagamento.</p>}
         {/* CTA */}
         <div className="space-y-3">
           <button
             onClick={handleSubscribe}
-            disabled={!selectedPlanId || isCheckingOut || isLoading}
+            disabled={!selectedPlanId || isCheckingOut || isLoading || reason === 'account_blocked'}
             className={cn(
               "w-full flex items-center justify-center gap-2 rounded-xl py-4 font-bold text-base transition-all",
               selectedPlanId && !isCheckingOut
@@ -270,7 +282,7 @@ export default function AssinarPage() {
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
-              <span>Acesso imediato</span>
+              <span>Liberação após aprovação</span>
             </div>
           </div>
         </div>

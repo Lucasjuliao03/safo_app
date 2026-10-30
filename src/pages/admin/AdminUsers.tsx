@@ -147,7 +147,7 @@ export default function AdminUsers() {
                             ? "bg-success/15 text-success border-success/20"
                             : "bg-warning/15 text-warning border-warning/20"
                         )}>
-                          {user.isApproved ? "Aprovado" : "Pendente"}
+                          {user.accessBlocked ? 'Bloqueado' : user.isApproved ? "Aprovado" : "Pendente"}
                         </span>
                       </td>
                       <td className="px-6 py-3 text-right space-x-2">
@@ -159,7 +159,7 @@ export default function AdminUsers() {
                                 disabled={approveMutation.isPending}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-success/10 text-success hover:bg-success hover:text-success-foreground transition-all disabled:opacity-50"
                               >
-                                <Check className="h-3.5 w-3.5" /> Aprovar
+                                <Check className="h-3.5 w-3.5" /> Liberar sem prazo
                               </button>
                             ) : (
                               <button

@@ -76,6 +76,7 @@ export interface User {
   passwordHash: string;
   role: UserRole;
   isApproved: boolean;
+  accessBlocked?: boolean;
   createdAt: string;
   courseId?: number;
   editalId?: number | null;

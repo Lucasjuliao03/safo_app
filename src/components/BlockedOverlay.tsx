@@ -7,7 +7,7 @@ interface BlockedOverlayProps {
   children?: ReactNode;
   answeredCount?: number;
   readCount?: number;
-  reason?: "limit_reached" | "expired";
+  reason?: "limit_reached" | "expired" | "account_blocked";
 }
 
 export function BlockedOverlay({
@@ -18,12 +18,15 @@ export function BlockedOverlay({
 }: BlockedOverlayProps) {
   const navigate = useNavigate();
   const isExpired = reason === "expired";
+  const isBlocked = reason === 'account_blocked';
   const isSummary = readCount !== undefined;
 
-  const title = isExpired ? "Acesso Expirado" : "Seu teste gratuito acabou";
+  const title = isBlocked ? 'Acesso suspenso' : isExpired ? "Acesso Expirado" : "Seu teste gratuito acabou";
 
   let description = "";
-  if (isExpired) {
+  if (isBlocked) {
+    description = 'Entre em contato com o suporte para verificar o acesso à sua conta.';
+  } else if (isExpired) {
     description =
       "Seu período de acesso ao sistema expirou. Renove para continuar estudando.";
   } else if (isSummary) {
@@ -51,7 +54,7 @@ export function BlockedOverlay({
           <p className="text-sm text-muted-foreground leading-relaxed">
             {description}
           </p>
-          {!isExpired && answeredCount !== undefined && (
+          {!isExpired && !isBlocked && answeredCount !== undefined && (
             <p className="text-sm text-muted-foreground">
               Total usado:{" "}
               <span className="font-bold text-primary">{answeredCount}</span>
@@ -61,20 +64,20 @@ export function BlockedOverlay({
 
         {/* CTA principal — Assinar */}
         <div className="space-y-3">
-          <button
+          {!isBlocked && <button
             onClick={() => navigate("/assinar")}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground py-4 font-bold text-base transition-all active:scale-[0.98] shadow-lg shadow-primary/20"
           >
             <CreditCard className="h-5 w-5" />
             Escolha um plano para continuar
             <ChevronRight className="h-4 w-4" />
-          </button>
+          </button>}
           <button onClick={() => navigate('/perfil')} className="w-full rounded-xl border border-border py-3 font-semibold">
             Meu perfil
           </button>
 
           {/* Benefícios resumidos */}
-          <div className="rounded-2xl bg-card border border-border p-4 text-left space-y-2">
+          {!isBlocked && <div className="rounded-2xl bg-card border border-border p-4 text-left space-y-2">
             <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Zap className="h-3.5 w-3.5 text-primary" />
               Desbloqueie o acesso completo
@@ -91,7 +94,7 @@ export function BlockedOverlay({
                 </li>
               ))}
             </ul>
-          </div>
+          </div>}
         </div>
       </div>
     </div>

@@ -118,7 +118,8 @@ BEGIN
   FOR item IN SELECT p.oid::regprocedure AS signature FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.prokind = 'f' AND (
-      (p.prosecdef AND p.proname NOT IN ('is_admin_user','has_active_access','get_active_order_for_user'))
+      (p.prosecdef AND p.proname NOT IN ('is_admin_user','has_active_access','get_active_order_for_user')
+        AND NOT (p.proname IN ('can_access_subject','can_access_study_content') AND p.prorettype='pg_catalog.bool'::regtype))
       OR p.proname IN ('get_study_questions','get_study_flashcards','get_study_summaries'))
   LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated',item.signature);

@@ -13,6 +13,8 @@ Variáveis obrigatórias do servidor estão documentadas em `.env.example`. `SUP
 
 ## 2. Banco de dados
 
+Para o erro `403 / permission denied for function can_access_subject` ao ler o plano de mentoria, use o reparo pontual [CORRECAO_MENTORIA.md](CORRECAO_MENTORIA.md), com `sql/CORRIGIR_ACESSO_MENTORIA.sql` e seu verificador.
+
 1. Fazer backup e testar restauração.
 2. Aplicar `supabase/migrations/20260831010000_production_security_baseline.sql` primeiro em homologação.
 3. Aplicar `supabase/migrations/20260907010000_security_advisor_remediation.sql` para habilitar RLS em conquistas e tornar as views `security_invoker`.
@@ -23,6 +25,8 @@ Variáveis obrigatórias do servidor estão documentadas em `.env.example`. `SUP
 A migration restringe dados pessoais, impede autoelevação de privilégio, fecha RPCs financeiras públicas, adiciona idempotência/reversão de pagamentos e protege conteúdo premium no banco.
 
 ## 3. Mercado Pago
+
+O roteiro atualizado está em [PAGAMENTOS_PRODUCAO.md](PAGAMENTOS_PRODUCAO.md). Depois da correção de estudos, execute `sql/INSTALAR_CORRECAO_PAGAMENTOS.sql` e `sql/VERIFICAR_CORRECAO_PAGAMENTOS.sql`. A nova API usa confirmação transacional, pedidos com preço/duração salvos e recuperação por `/api/payments/status`. Sempre instale pagamentos por último, pois também atualiza os helpers de acesso para respeitar bloqueios administrativos.
 
 1. Cadastrar o endpoint HTTPS `/api/payments/webhook` no painel e habilitar assinatura secreta.
 2. Copiar a assinatura para `MERCADO_PAGO_WEBHOOK_SECRET`.
