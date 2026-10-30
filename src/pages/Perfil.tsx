@@ -24,13 +24,15 @@ export default function PerfilPage() {
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const accessStatus = useAccessStatus();
 
-  const { data: subjects = [], isLoading: loadingSub } = useSubjects(isAdmin ? undefined : courseId);
-  const { data: questions = [], isLoading: loadingQ } = useQuestions(isAdmin ? undefined : courseId);
+  const moduleCourse = accessStatus.canAccess ? (isAdmin ? undefined : courseId) : null;
+  const moduleUser = accessStatus.canAccess ? user?.id : undefined;
+  const { data: subjects = [], isLoading: loadingSub } = useSubjects(moduleCourse);
+  const { data: questions = [], isLoading: loadingQ } = useQuestions(moduleCourse);
   const { data: profile } = useUserProfile(user?.id);
-  const { data: todayProd } = useUserProductivity(user?.id);
-  const { data: qStats = [] } = useUserQuestionStats(user?.id);
-  const { data: streakStats } = useUserStreakStats(user?.id);
-  const achievementStats = useAchievementStats(user?.id);
+  const { data: todayProd } = useUserProductivity(moduleUser);
+  const { data: qStats = [] } = useUserQuestionStats(moduleUser);
+  const { data: streakStats } = useUserStreakStats(moduleUser);
+  const achievementStats = useAchievementStats(moduleUser);
 
   const stats = buildStats(profile, todayProd);
   const performance = !loadingQ && !loadingSub ? getSubjectPerformance(qStats, questions, subjects) : [];
@@ -230,7 +232,7 @@ export default function PerfilPage() {
         </div>
 
         {/* Stats - 5 cards na mesma linha */}
-        <div className="grid grid-cols-5 gap-2">
+        {accessStatus.canAccess && <div className="grid grid-cols-5 gap-2">
           <div className="rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 p-2.5 text-center">
             <Flame className="h-4 w-4 text-accent mx-auto mb-0.5" />
             <p className="text-lg font-bold text-foreground leading-tight">{streakStats?.currentStreak ?? stats.streak}</p>
@@ -262,10 +264,9 @@ export default function PerfilPage() {
             </p>
             <p className="text-[10px] text-muted-foreground leading-tight">Resumos</p>
           </div>
-        </div>
-
+        </div>}
         {/* Medalhas */}
-        <Link to="/medalhas"
+        {accessStatus.canAccess && <Link to="/medalhas"
           className="flex items-center justify-between rounded-2xl bg-gradient-to-br from-warning/15 to-warning/5 border border-warning/25 p-4 transition-all active:scale-[0.98]">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-warning/20 flex items-center justify-center">
@@ -284,13 +285,13 @@ export default function PerfilPage() {
             </div>
             <ChevronRight className="h-5 w-5 text-warning" />
           </div>
-        </Link>
+        </Link>}
 
         {/* Notificações */}
         <NotificationSettings />
 
         {/* Desempenho */}
-        <PerformanceCard subjects={subjectStats} isLoading={loadingQ || loadingSub} />
+        {accessStatus.canAccess && <PerformanceCard subjects={subjectStats} isLoading={loadingQ || loadingSub} />}
       </div>
     </AppLayout>
   );

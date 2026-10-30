@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@t
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { rememberLastStudyFeedback } from '@/lib/lastStudyFeedback';
 import QuestoesPage from '@/pages/Questoes';
 import FlashcardsPage from '@/pages/Flashcards';
 import { useAccessStatus } from '@/hooks/useAccessStatus';
@@ -12,10 +14,11 @@ import { ApiResponseError } from '@/lib/apiJson';
 
 const state = vi.hoisted(() => ({ user: { id: 'student', courseId: 1, role: 'student', isApproved: false },
   answer: vi.fn(), reveal: vi.fn(), review: vi.fn(), readAccess: vi.fn() }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: state.user, isAdmin: false, loading: false }) }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: state.user, isAdmin: false, loading: false, isAuthenticated: true }) }));
 vi.mock('@/components/AppLayout', () => ({ AppLayout: ({ children }: { children: ReactNode }) => <>{children}</> }));
 vi.mock('@/services/studyAccessService', () => ({
   getStudyAccess: () => state.readAccess(),
+  recordStudyFlashcardReview: (id: number, result: string, requestId: string) => state.review({ flashcardId: id, result, requestId }),
   revealStudyFlashcard: (...args: unknown[]) => state.reveal(...args),
   isStudyLimitError: () => false,
 }));
@@ -37,7 +40,7 @@ vi.mock('@/hooks/useStudyData', () => ({
   useRecordAnswer: () => {
     const qc = useQueryClient();
     return useMutation({ mutationFn: (args: unknown) => state.answer(args) as Promise<StudyFeedback>,
-      onSuccess: data => { qc.setQueryData(['studyAccess', 'student'], data); } });
+      onSuccess: (data, args) => { const vars = args as { questionId: number; requestId: string }; rememberLastStudyFeedback(qc, 'student', { type: 'questions', id: vars.questionId, requestId: vars.requestId, feedback: data }); qc.setQueryData(['studyAccess', 'student'], data); } });
   },
 }));
 
@@ -63,38 +66,36 @@ beforeEach(() => {
 afterEach(() => { cleanup(); qc.clear(); });
 
 describe('lifetime trial interface', () => {
-  it('keeps the complete catalog selectable even after the lifetime trial is exhausted', async () => {
+  it('blocks the complete catalog after the lifetime trial is exhausted', async () => {
     state.readAccess.mockResolvedValue(exhausted);
-    render(<QuestoesPage />, { wrapper: Wrapper });
-    questionCatalog();
-    expect(screen.getByRole('button', { name: /Constituição 12 qsts/ })).toBeInTheDocument();
-    await waitFor(() => expect(qc.getQueryData(['studyAccess', 'student'])).toEqual(exhausted));
-    expect(screen.queryByText('Seu teste gratuito acabou')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Constituição/ }));
-    expect(screen.getByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    render(<ProtectedRoute><QuestoesPage /></ProtectedRoute>, { wrapper: Wrapper });
+    expect(await screen.findByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^M.*Escolha/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Meu perfil' })).toBeInTheDocument();
     expect(state.answer).not.toHaveBeenCalled();
   });
-  it('shows the tenth question correction and blocks only when advancing', async () => {
-    render(<QuestoesPage />, { wrapper: Wrapper });
+  it('keeps the tenth correction in the global blocked screen', async () => {
+    render(<ProtectedRoute><QuestoesPage /></ProtectedRoute>, { wrapper: Wrapper });
+    await screen.findByRole('button', { name: /Escolha/ });
     questionCatalog();
-    fireEvent.click(screen.getByRole('button', { name: /Constituição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Constitui/ }));
     fireEvent.click(screen.getByRole('button', { name: /Alternativa A/ }));
     fireEvent.click(screen.getByRole('button', { name: /Confirmar/ }));
-    expect(await screen.findByText('Correção da décima questão')).toBeInTheDocument();
-    expect(screen.queryByText('Seu teste gratuito acabou')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Próxima/ }));
-    expect(screen.getByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    expect(await screen.findByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    expect(screen.getByText(/Corre.*quest/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pr.xima/ })).not.toBeInTheDocument();
     expect(state.answer).toHaveBeenCalledTimes(1);
   });
-  it('keeps the tenth flashcard back visible, then blocks the next reveal', async () => {
-    render(<FlashcardsPage />, { wrapper: Wrapper });
+  it('saves the tenth flashcard review inside the blocked screen', async () => {
+    render(<ProtectedRoute><FlashcardsPage /></ProtectedRoute>, { wrapper: Wrapper });
+    await screen.findByRole('button', { name: /Direito/ });
     fireEvent.click(screen.getByRole('button', { name: /Direito/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Constituição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Constitui/ }));
     fireEvent.click(screen.getByRole('button', { name: /Revelar Resposta/ }));
-    expect(await screen.findByText('Verso da décima utilização')).toBeInTheDocument();
-    expect(screen.queryByText('Seu teste gratuito acabou')).not.toBeInTheDocument();
+    expect(await screen.findByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    expect(screen.getByText(/Verso da/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Bom' }));
-    await waitFor(() => expect(screen.getByText('Seu teste gratuito acabou')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Verso da/)).not.toBeInTheDocument());
     expect(state.reveal).toHaveBeenCalledTimes(1);
     expect(state.review).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String), result: 'good' }));
   });

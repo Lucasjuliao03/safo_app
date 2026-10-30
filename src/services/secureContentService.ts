@@ -19,6 +19,12 @@ export class SecureContentError extends Error {
 const responseCache = new Map<string, { expiresAt: number; data: unknown[] }>();
 const pendingRequests = new Map<string, Promise<unknown[]>>();
 const cacheLifetimeMs = 30_000;
+let cacheGeneration = 0;
+export function clearSecureContentCache() {
+  cacheGeneration += 1;
+  responseCache.clear();
+  pendingRequests.clear();
+}
 
 export async function validAccessToken(forceRefresh = false): Promise<{ token: string; userId: string }> {
   let { data: { session } } = await supabase.auth.getSession();
@@ -65,6 +71,7 @@ export async function fetchSecureContent<T>(
   const url = `/api/content/${type}${suffix ? `?${suffix}` : ""}`;
 
   const initial = await validAccessToken();
+  const generation = cacheGeneration;
   const cacheKey = `${initial.userId}:${url}`;
   const cached = responseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data as T[];
@@ -83,10 +90,10 @@ export async function fetchSecureContent<T>(
         data = await requestContent<T>(url, refreshed.token);
       }
 
-      responseCache.set(cacheKey, { expiresAt: Date.now() + cacheLifetimeMs, data });
+      if (generation === cacheGeneration) responseCache.set(cacheKey, { expiresAt: Date.now() + cacheLifetimeMs, data });
       return data;
     } finally {
-      pendingRequests.delete(cacheKey);
+      if (generation === cacheGeneration) pendingRequests.delete(cacheKey);
     }
   })();
 

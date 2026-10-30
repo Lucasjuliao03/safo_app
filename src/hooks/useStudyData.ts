@@ -9,6 +9,7 @@ import { fetchSecureContent } from '@/services/secureContentService';
 import { answerStudyQuestion, recordStudyFlashcardReview, type FlashcardRating } from '@/services/studyAccessService';
 import { invalidateStudyProgress, showStudyAchievements } from '@/lib/studyProgress';
 import { getStudyDate } from '@/lib/studyDate';
+import { rememberLastStudyFeedback } from '@/lib/lastStudyFeedback';
 
 /* ═══════════════════════════════════════════════════════ */
 /*  ICON MAP (UI only — not stored in DB)                 */
@@ -87,6 +88,7 @@ export function useQuestions(courseId?: string | null, activeLawIds?: number[] |
   return useQuery({
     queryKey: ['questions', courseId, activeLawIds],
     queryFn: async () => {
+      if (courseId === null) return [];
       const filtered = await fetchSecureContent<any>('questions', {
         courseId,
         lawIds: activeLawIds,
@@ -291,8 +293,10 @@ export function useRecordAnswer() {
     mutationFn: (vars: { userId: string; questionId: number; selectedOption: string; isCorrect?: boolean; requestId?: string }) =>
       answerStudyQuestion(vars.questionId, vars.selectedOption, vars.requestId || crypto.randomUUID()),
     onSuccess: (feedback, variables) => {
+      rememberLastStudyFeedback(qc, variables.userId, { type: 'questions', id: variables.questionId,
+        requestId: variables.requestId || '', feedback });
       qc.setQueryData(['studyAccess', variables.userId], feedback);
-      invalidateStudyProgress(qc);
+      invalidateStudyProgress(qc, feedback.entitled || feedback.remaining !== 0);
       showStudyAchievements(feedback);
       notifications.markAsStudied();
     },
@@ -307,7 +311,7 @@ export function useRecordFlashcardReview() {
       recordStudyFlashcardReview(vars.flashcardId, vars.result, vars.requestId),
     onSuccess: (feedback, variables) => {
       qc.setQueryData(['studyAccess', variables.userId], feedback);
-      invalidateStudyProgress(qc);
+      invalidateStudyProgress(qc, feedback.entitled || feedback.remaining !== 0);
       showStudyAchievements(feedback);
       notifications.markAsStudied();
     },

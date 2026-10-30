@@ -20,6 +20,7 @@ describe('atomic study persistence in PostgreSQL', () => {
     db = new PGlite();
     await db.exec(read('src/test/fixtures/trial-schema.sql'));
     await db.exec(read('src/test/fixtures/study-progress-schema.sql'));
+    await db.exec(read('src/test/fixtures/app-access-schema.sql'));
     await db.exec('alter table user_flashcard_reviews drop constraint user_flashcard_reviews_pkey');
     // Test the exact single file the user will paste, not a hand-built approximation.
     await db.exec(read('sql/INSTALAR_CORRECAO_ESTUDOS.sql'));
@@ -29,6 +30,47 @@ describe('atomic study persistence in PostgreSQL', () => {
     await rows('insert into profiles(id) values($1)', [user]);
   });
   afterAll(async () => { await db?.close(); });
+
+  async function asBrowser<T>(run: () => Promise<T>, role = 'authenticated') {
+    await rows("select set_config('request.jwt.claim.sub',$1,false)", [user]);
+    await db.exec(`set role ${role}`);
+    try { return await run(); } finally { await db.exec('reset role'); }
+  }
+
+  it('blocks direct module reads, nested views and writes after ten uses, while preserving the owner profile', async () => {
+    expect(await asBrowser(() => rows('select * from mentoria_diagnosticos'))).toHaveLength(1);
+    for (let i = 0; i < 10; i++) await answer();
+    await asBrowser(async () => {
+      for (const table of ['mentoria_diagnosticos', 'patrulhamento_progresso', 'ranking_global', 'topics', 'user_question_stats', 'nested_mentoring_view']) {
+        expect(await rows(`select * from ${table}`)).toEqual([]);
+      }
+      expect(await rows('select id from profiles')).toEqual([{ id: user }]);
+      expect(await rows('select * from plans')).toHaveLength(1);
+      await expect(rows('insert into mentoria_diagnosticos values(2,$1,\'forged\')', [user])).rejects.toMatchObject({ code: '42501' });
+      await expect(rows('update profiles set is_active=true where id=$1', [user])).rejects.toThrow();
+      await expect(rows('update safo_trial.study_trial_quota set used_count=0 where user_id=$1', [user])).rejects.toMatchObject({ code: '42501' });
+      await expect(rows('select public.legacy_read_mentoring()')).rejects.toMatchObject({ code: '42501' });
+      await rows('update profiles set course_id=2 where id=$1', [user]);
+    });
+    expect((await access()).used).toBe(10);
+  });
+  it('ignores forged metadata and releases modules only after the database confirms payment or admin role', async () => {
+    for (let i = 0; i < 10; i++) await answer();
+    await rows("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ user_metadata: { role: 'admin', is_active: true } })]);
+    expect(await asBrowser(() => rows('select * from ranking_global'))).toEqual([]);
+    await rows('update profiles set is_active=true where id=$1', [user]);
+    expect(await asBrowser(() => rows('select * from ranking_global'))).toHaveLength(1);
+    await rows("update profiles set active_until=now()-interval '1 day' where id=$1", [user]);
+    expect(await asBrowser(() => rows('select * from ranking_global'))).toEqual([]);
+    await rows("update profiles set role='admin' where id=$1", [user]);
+    expect(await asBrowser(() => rows('select * from ranking_global'))).toHaveLength(1);
+  });
+  it('denies expired accounts before ten uses and anonymous module access', async () => {
+    await rows("update profiles set active_until=now()-interval '1 day' where id=$1", [user]);
+    expect(await asBrowser(() => rows('select * from mentoria_diagnosticos'))).toEqual([]);
+    await expect(asBrowser(() => rows('select * from mentoria_diagnosticos'), 'anon')).rejects.toMatchObject({ code: '42501' });
+    expect((await summary(1)).error).toBe('access_expired');
+  });
 
   it('commits quota, attempt, statistics, XP, streak, mission and achievements together', async () => {
     await rows("insert into daily_missions(user_id,mission_date,questions_count) values($1,(now() AT TIME ZONE 'America/Sao_Paulo')::date,1)", [user]);
@@ -89,7 +131,6 @@ describe('atomic study persistence in PostgreSQL', () => {
     expect((await review(request)).error).toBe('reveal_required');
   });
   it('limits summaries separately and records rereads without duplication on retries', async () => {
-    for(let i=0;i<10;i++) await answer();
     const request = randomUUID();
     expect(await summary(1,request)).toMatchObject({ readCount:1,replayed:false });
     expect((await summary(1,request)).replayed).toBe(true);
@@ -97,7 +138,10 @@ describe('atomic study persistence in PostgreSQL', () => {
     expect((await summary(3)).error).toBe('summary_limit');
     expect((await summary(1)).readCount).toBe(2);
     expect((await summary(4)).error).toBe('content_not_allowed');
-    expect((await access()).used).toBe(10);
+    expect((await access()).used).toBe(0);
+    for(let i=0;i<10;i++) await answer();
+    expect((await summary(1)).error).toBe('trial_exhausted');
+    expect((await summary(1,request)).replayed).toBe(true);
   });
   it('permits the server role and rejects direct browser writes', async () => {
     await db.exec('set role service_role');

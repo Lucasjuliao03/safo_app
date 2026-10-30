@@ -1,6 +1,7 @@
 import { useLocation, Link } from "react-router-dom";
 import { Home, BookOpen, Layers, FileText, User, Trophy, Target, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAccessStatus } from '@/hooks/useAccessStatus';
 
 const navItems = [
   { path: "/", label: "Início", icon: Home },
@@ -13,13 +14,15 @@ const navItems = [
 
 export function BottomNav() {
   const { pathname } = useLocation();
+  const { canAccess } = useAccessStatus();
+  const visibleItems = canAccess ? navItems : navItems.filter(item => item.path === '/perfil');
 
   if (pathname === "/login") return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-lg safe-bottom">
       <div className="mx-auto flex max-w-lg items-center justify-around px-1 py-1">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const active = pathname === item.path || (item.path === '/estudos' && ['/questoes', '/flashcards', '/resumos'].includes(pathname));
           return (
             <Link

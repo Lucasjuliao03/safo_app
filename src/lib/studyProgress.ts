@@ -2,11 +2,11 @@ import type { QueryClient } from '@tanstack/react-query';
 import { ACHIEVEMENTS } from '@/types/achievements';
 import { toast } from 'sonner';
 
-export function invalidateStudyProgress(client: QueryClient) {
+export function invalidateStudyProgress(client: QueryClient, refetch = true) {
   for (const key of ['studyAccess', 'userProfile', 'userProductivity', 'userLifetimeUsage',
     'userQuestionStats', 'userFlashcardReviews', 'userAchievements', 'daily-mission',
     'studentEvolution', 'student-evolution', 'userStreakStats', 'ranking']) {
-    void client.invalidateQueries({ queryKey: [key] });
+    void client.invalidateQueries({ queryKey: [key], ...(!refetch ? { refetchType: 'none' as const } : {}) });
   }
 }
 

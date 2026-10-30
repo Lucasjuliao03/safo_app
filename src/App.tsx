@@ -143,7 +143,7 @@ const AppRoutes = () => {
           <Route path="/painel/patrulhamento/:courseId" element={<ProtectedRoute><AdminRoute><AdminPatrulhamentoEditor /></AdminRoute></ProtectedRoute>} />
           <Route path="/painel/normas" element={<ProtectedRoute><AdminRoute><AdminLawReferences /></AdminRoute></ProtectedRoute>} />
 
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
         </Routes>
         </Suspense>
       </div>

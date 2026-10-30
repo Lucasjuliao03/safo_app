@@ -1,7 +1,7 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
-import { precacheAndRoute } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -23,6 +23,7 @@ self.addEventListener('message', (event) => {
 //  PRECACHING (injetado pelo VitePWA no build)           //
 // ═══════════════════════════════════════════════════════ //
 precacheAndRoute(self.__WB_MANIFEST);
+cleanupOutdatedCaches();
 
 // ═══════════════════════════════════════════════════════ //
 //  RUNTIME CACHING                                       //

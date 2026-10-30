@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applySameOriginCors } from "../../server/httpSecurity.js";
 import { authenticateBearer, getSupabaseAdmin } from "../../server/supabaseAdmin.js";
 import { isTopicVisibleForCourse } from "../../src/lib/courseScope.js";
+import { requireAppAccess } from "../../server/appAccess.js";
 
 /** Activates only the caller's mentoring plan after it has been saved. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -11,6 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
     const user = await authenticateBearer(req.headers.authorization);
     if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada" });
+    if (!await requireAppAccess(user.id, res)) return;
     const db = getSupabaseAdmin();
     const { data: profile, error: profileError } = await db.from("profiles")
       .select("course_id").eq("id", user.id).maybeSingle();

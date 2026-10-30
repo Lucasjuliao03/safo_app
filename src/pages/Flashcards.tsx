@@ -13,6 +13,7 @@ import { useStudyAccess } from '@/hooks/useStudyAccess';
 import { isStudyLimitError, revealStudyFlashcard } from '@/services/studyAccessService';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { rememberLastStudyFeedback } from '@/lib/lastStudyFeedback';
 
 function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
   card: Flashcard;
@@ -36,6 +37,7 @@ function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
       onRevealed();
       setBack(response.back || '');
       setFlipped(true);
+      rememberLastStudyFeedback(qc, user?.id, { type: 'flashcards', id: Number(card.id), requestId, feedback: response });
       qc.setQueryData(['studyAccess', user?.id], response);
     } catch (error) {
       if (isStudyLimitError(error)) onBlocked();

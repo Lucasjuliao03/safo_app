@@ -3,23 +3,21 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App.tsx";
 import "./index.css";
 import { toast } from "sonner";
+import { watchPwaUpdates } from './lib/pwaUpdates';
 
 if (import.meta.env.PROD) {
-  // Configura o Service Worker para procurar atualizações com o botão interativo.
+  const notifyWaiting = () => toast("Nova versão disponível!", {
+    id: 'app-update', description: "Atualize para receber as últimas melhorias.",
+    duration: Infinity, position: "top-center",
+    action: { label: "Atualizar agora", onClick: () => { void updateSW(true); } },
+  });
   const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
-      toast("Nova versão disponível! 🚀", {
-        description: "Atualize para receber as últimas melhorias.",
-        duration: Infinity,
-        position: "top-center",
-        action: {
-          label: "Atualizar agora",
-          onClick: () => {
-            updateSW(true);
-          },
-        },
-      });
+      notifyWaiting();
+    },
+    onRegisteredSW(_url, registration) {
+      if (registration) watchPwaUpdates(registration, notifyWaiting);
     },
     onOfflineReady() {
       console.log("[PWA] App pronto para funcionar offline.");

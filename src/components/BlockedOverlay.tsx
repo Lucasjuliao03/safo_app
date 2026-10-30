@@ -1,14 +1,17 @@
 import { Lock, Clock, CreditCard, ChevronRight, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { FREE_USAGE_LIMIT, FREE_SUMMARY_LIMIT } from "@/services/accessService";
+import type { ReactNode } from 'react';
 
 interface BlockedOverlayProps {
+  children?: ReactNode;
   answeredCount?: number;
   readCount?: number;
   reason?: "limit_reached" | "expired";
 }
 
 export function BlockedOverlay({
+  children,
   answeredCount,
   readCount,
   reason = "limit_reached",
@@ -30,8 +33,8 @@ export function BlockedOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/95 backdrop-blur-sm p-6">
-      <div className="max-w-sm w-full text-center space-y-5 animate-slide-up">
+    <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-6">
+      <div className="mx-auto my-8 max-w-sm w-full text-center space-y-5 animate-slide-up">
         {/* Ícone */}
         <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-primary/10 border-2 border-primary/20">
           {isExpired ? (
@@ -41,6 +44,7 @@ export function BlockedOverlay({
           )}
         </div>
 
+        {children}
         {/* Texto principal */}
         <div className="space-y-2">
           <h2 className="text-xl font-bold text-foreground">{title}</h2>
@@ -64,6 +68,9 @@ export function BlockedOverlay({
             <CreditCard className="h-5 w-5" />
             Escolha um plano para continuar
             <ChevronRight className="h-4 w-4" />
+          </button>
+          <button onClick={() => navigate('/perfil')} className="w-full rounded-xl border border-border py-3 font-semibold">
+            Meu perfil
           </button>
 
           {/* Benefícios resumidos */}

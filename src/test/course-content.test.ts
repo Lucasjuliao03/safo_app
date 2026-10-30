@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   user: { id: 'student' } as { id: string } | null,
   profile: { course_id: 1 as number | null, edital_id: 3, role: 'student', is_active: false },
   usageError: false,
+  access: { entitled: false, used: 0, limit: 10, remaining: 10, expired: false },
   enrollment: null as { user_id: string; status: string } | null,
   savedPlan: true,
   writes: [] as Array<{ table: string; payload: Record<string, unknown> }>,
@@ -22,6 +23,10 @@ const topics = [
 vi.mock('../../server/supabaseAdmin.js', () => ({
   authenticateBearer: vi.fn(async () => state.user),
   getSupabaseAdmin: () => ({
+    rpc: async (_name: string, args: { p_user_id: string }) => {
+      expect(args.p_user_id).toBe('student');
+      return { data: state.usageError ? null : state.access, error: state.usageError ? { code: 'PGRST202' } : null };
+    },
     from: (table: string) => {
       const filters: Array<[string, unknown]> = [];
       let from = 0, to = 999, single = false, head = false;
@@ -86,6 +91,7 @@ beforeEach(() => {
   state.user = { id: 'student' };
   state.profile.course_id = 1;
   state.usageError = false;
+  state.access = { entitled: false, used: 0, limit: 10, remaining: 10, expired: false };
   state.enrollment = null;
   state.savedPlan = true;
   state.writes = [];
@@ -126,8 +132,22 @@ describe('course catalog for a new CHO student', () => {
   it('rejects prototype names as content types', async () => {
     expect((await request('toString')).code).toBe(404);
   });
-  it('keeps catalog browsing available independently of quota writes', async () => {
+  it('fails closed when the private access check is unavailable', async () => {
     state.usageError = true;
+    expect((await request('questions')).code).toBe(503);
+  });
+  it.each(['questions', 'flashcards', 'summaries', 'subjects', 'topics'])('blocks the entire %s catalog after ten uses', async type => {
+    state.access.used = 10;
+    const result = await request(type, { courseId: '2', ids: '1', entitled: 'true' });
+    expect(result.code).toBe(403);
+    expect(result.body.data).toBeUndefined();
+  });
+  it('blocks expired accounts even with unused trial quota', async () => {
+    state.access.expired = true;
+    expect((await request('subjects')).code).toBe(403);
+  });
+  it('unlocks the catalog after a server-verified payment', async () => {
+    state.access.used = 10; state.access.entitled = true;
     expect((await request('questions')).code).toBe(200);
   });
 });
@@ -143,6 +163,16 @@ describe('mentoring activation', () => {
     expect((await activate()).code).toBe(200);
     expect(state.writes).toContainEqual({ table: 'mentoria_alunos', payload: { user_id: 'student', status: 'active' } });
     expect(state.writes.find(row => row.table === 'mentoria_estrategias')?.payload.user_id).toBe('student');
+  });
+  it('rejects an exhausted user without writing mentoring data', async () => {
+    state.access.used = 10;
+    expect((await activate()).code).toBe(403);
+    expect(state.writes).toEqual([]);
+  });
+  it('does not activate mentoring when access cannot be verified', async () => {
+    state.usageError = true;
+    expect((await activate()).code).toBe(503);
+    expect(state.writes).toEqual([]);
   });
   it('requires a saved diagnosis and tasks', async () => {
     state.savedPlan = false;

@@ -23,3 +23,17 @@ WHERE n.nspname='public' AND c.relname IN('question_attempts','user_question_sta
 SELECT NOT EXISTS (
   SELECT 1 FROM public.profiles p LEFT JOIN safo_trial.study_trial_quota q ON q.user_id=p.id WHERE q.user_id IS NULL
 ) AS todas_as_contas_com_quota;
+
+SELECT
+  to_regprocedure('safo_trial.can_use_app()') IS NOT NULL AS bloqueio_global_instalado,
+  NOT has_table_privilege('authenticated','safo_trial.study_trial_quota','UPDATE') AS contador_protegido,
+  NOT has_table_privilege('authenticated','profiles','INSERT') AS recriacao_de_perfil_bloqueada;
+
+SELECT c.relname AS tabela,
+  c.relrowsecurity AS rls_ativo,
+  NOT p.polpermissive AS bloqueio_restritivo,
+  pg_get_expr(p.polqual,p.polrelid) LIKE '%can_use_app%' AS verifica_quota_no_banco
+FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND p.polname='app_access_required'
+ORDER BY c.relname;

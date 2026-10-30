@@ -3,6 +3,8 @@ import { User } from "@/types/study";
 import * as authService from "@/services/authService";
 import { supabase } from "@/lib/supabase";
 import { loadAvailableAvatars } from "@/hooks/useAvatar";
+import { useQueryClient } from '@tanstack/react-query';
+import { clearSecureContentCache } from '@/services/secureContentService';
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -49,6 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen to changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
+        clearSecureContentCache();
+        queryClient.clear();
         setUser(null);
         setLoading(false);
       } else if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
@@ -78,6 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await authService.logout();
+    clearSecureContentCache();
+    queryClient.clear();
     setUser(null);
   };
 

@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applySameOriginCors } from "../server/httpSecurity.js";
 import { authenticateBearer, getSupabaseAdmin } from "../server/supabaseAdmin.js";
 import { isTopicVisibleForCourse } from "../src/lib/courseScope.js";
+import { requireAppAccess } from "../server/appAccess.js";
 
 // Generic Vercel Node Functions do not expand [type] paths as Next.js does.
 // vercel.json maps /api/content/:type to this static function's query string.
@@ -84,6 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const user = await authenticateBearer(req.headers.authorization);
     if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada" });
+    if (!await requireAppAccess(user.id, res)) return;
 
     const supabase = getSupabaseAdmin();
     const { data: profile, error: profileError } = await supabase
@@ -119,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let trialLimit = Number.POSITIVE_INFINITY;
     if (!entitled && type === "summaries") {
       // Keep the same two sample summaries available for rereading. The server
-      // records reads independently; question/flashcard quota does not hide them.
+      // records reads independently while the global trial remains available.
       trialLimit = 2;
     }
 

@@ -18,12 +18,16 @@ BEGIN
   FOR target IN
     SELECT c.oid::regclass FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r','p') AND (
-      (n.nspname = 'public' AND c.relname IN (
+    WHERE c.relkind IN ('r','p','v') AND (
+      (n.nspname = 'public' AND (c.relkind = 'v' OR c.relname IN (
         'profiles','questions','flashcards','summaries','question_attempts','user_question_stats',
         'user_flashcard_reviews','flashcard_review_logs','user_daily_productivity',
-        'user_xp_logs','user_summary_views','user_achievements','daily_missions'
-      )) OR (n.nspname = 'safo_trial' AND c.relname IN (
+        'user_xp_logs','user_summary_views','user_achievements','daily_missions',
+        'subjects','topics','subtopics','law_references','edicts','edict_subjects',
+        'edital_law_references','exam_boards','ranking_global','ranking_history',
+        'public_profile_directory','weekly_challenges','challenge_participants'
+      ) OR c.relname LIKE 'mentoria\_%' ESCAPE '\'
+        OR c.relname LIKE 'patrulhamento\_%' ESCAPE '\')) OR (n.nspname = 'safo_trial' AND c.relname IN (
         'study_trial_quota','study_trial_events','summary_read_events','achievement_rules'
       ))
     )

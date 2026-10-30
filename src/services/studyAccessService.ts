@@ -1,7 +1,8 @@
 import { readApiJson, ApiResponseError } from '@/lib/apiJson';
 import { validAccessToken } from './secureContentService';
+import { isAppAccessSnapshot, type AppAccessSnapshot } from '@/lib/appAccess';
 
-export interface StudyAccess { entitled: boolean; used: number; remaining: number | null; limit: number; expired?: boolean }
+export type StudyAccess = AppAccessSnapshot;
 export interface StudyFeedback extends StudyAccess {
   correctOption?: string; explanation?: string; isCorrect?: boolean; back?: string; replayed: boolean;
   earnedXp?: number; unlockedAchievementIds?: string[];
@@ -19,7 +20,11 @@ async function studyRequest<T extends object>(body?: object): Promise<T> {
   });
   return readApiJson<T>(response, 'Não foi possível validar o acesso de estudo.');
 }
-export const getStudyAccess = () => studyRequest<StudyAccess>();
+export async function getStudyAccess(): Promise<StudyAccess> {
+  const access = await studyRequest<StudyAccess>();
+  if (!isAppAccessSnapshot(access)) throw new ApiResponseError('Não foi possível validar seu acesso. Tente novamente.', 503, 'study_unavailable');
+  return access;
+}
 export const answerStudyQuestion = (id: number, selectedOption: string, requestId: string) =>
   studyRequest<StudyFeedback>({ type: 'questions', id, selectedOption, requestId });
 export const revealStudyFlashcard = (id: number, requestId: string) =>

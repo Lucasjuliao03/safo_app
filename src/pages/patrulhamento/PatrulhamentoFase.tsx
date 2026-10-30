@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { sanitizeContentHtml } from '@/lib/sanitize';
 import { answerStudyQuestion, revealStudyFlashcard, recordStudyFlashcardReview, isStudyLimitError } from '@/services/studyAccessService';
+import { rememberLastStudyFeedback } from '@/lib/lastStudyFeedback';
 import { invalidateStudyProgress, showStudyAchievements } from '@/lib/studyProgress';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStudyAccess } from '@/hooks/useStudyAccess';
@@ -159,9 +160,11 @@ export default function PatrulhamentoFase() {
       setSubmitting(true);
       try {
         const feedback = await answerStudyQuestion(Number(currentInteractionItem.id), optionId, requestId);
+        rememberLastStudyFeedback(qc, user?.id, { type: 'questions', id: Number(currentInteractionItem.id), requestId, feedback });
+        qc.setQueryData(['studyAccess', user?.id], feedback);
         setAnsweredState({ ...feedback, selectedOptionId: optionId });
         if (feedback.isCorrect) setAcertos(prev => prev + 1);
-        invalidateStudyProgress(qc);
+        invalidateStudyProgress(qc, feedback.entitled || feedback.remaining !== 0);
         showStudyAchievements(feedback);
         refreshAccess();
       } catch (error) {
@@ -174,6 +177,8 @@ export default function PatrulhamentoFase() {
     setSubmitting(true);
     try {
       const feedback = await revealStudyFlashcard(Number(currentInteractionItem.id), requestId);
+      rememberLastStudyFeedback(qc, user?.id, { type: 'flashcards', id: Number(currentInteractionItem.id), requestId, feedback });
+      qc.setQueryData(['studyAccess', user?.id], feedback);
       setAnsweredState(feedback);
       refreshAccess();
     } catch (error) {
