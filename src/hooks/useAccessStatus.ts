@@ -16,6 +16,7 @@ export type AccessReason =
   | "trial"
   | "trial_exhausted"
   | "expired"
+  | "unavailable"
   | "loading";
 
 export interface AccessStatus {
@@ -26,11 +27,12 @@ export interface AccessStatus {
   isPaid: boolean;
   isOnTrial: boolean;
   isLoading: boolean;
+  error?: unknown;
 }
 
 export function useAccessStatus(): AccessStatus {
   const { user, isAdmin, loading: authLoading } = useAuth();
-  const { data: access, isLoading: prodLoading } = useStudyAccess();
+  const { data: access, isLoading: prodLoading, error } = useStudyAccess();
 
   return useMemo<AccessStatus>(() => {
     const isLoading = authLoading || prodLoading;
@@ -70,6 +72,11 @@ export function useAccessStatus(): AccessStatus {
         isOnTrial: false,
         isLoading: false,
       };
+    }
+
+    if (error) {
+      return { canAccess: false, reason: 'unavailable', trialRemaining: 0,
+        accessExpiresAt: user.activeUntil ?? null, isPaid: false, isOnTrial: false, isLoading: false, error };
     }
 
     // Resumos têm limite próprio; a quota de estudo é independente da produtividade.
@@ -117,5 +124,5 @@ export function useAccessStatus(): AccessStatus {
       isOnTrial: true,
       isLoading: false,
     };
-  }, [user, isAdmin, authLoading, prodLoading, access]);
+  }, [user, isAdmin, authLoading, prodLoading, access, error]);
 }

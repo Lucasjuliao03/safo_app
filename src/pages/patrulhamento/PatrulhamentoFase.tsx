@@ -9,13 +9,16 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { sanitizeContentHtml } from '@/lib/sanitize';
-import { answerStudyQuestion, revealStudyFlashcard, isStudyLimitError } from '@/services/studyAccessService';
+import { answerStudyQuestion, revealStudyFlashcard, recordStudyFlashcardReview, isStudyLimitError } from '@/services/studyAccessService';
+import { invalidateStudyProgress, showStudyAchievements } from '@/lib/studyProgress';
+import { useQueryClient } from '@tanstack/react-query';
 import { useStudyAccess } from '@/hooks/useStudyAccess';
 import { BlockedOverlay } from '@/components/BlockedOverlay';
 
 export default function PatrulhamentoFase() {
   const { id } = useParams();
   const { user } = useAuth();
+  const qc = useQueryClient();
   const navigate = useNavigate();
   const courseId = user?.courseId ? Number(user.courseId) : null;
   
@@ -158,6 +161,8 @@ export default function PatrulhamentoFase() {
         const feedback = await answerStudyQuestion(Number(currentInteractionItem.id), optionId, requestId);
         setAnsweredState({ ...feedback, selectedOptionId: optionId });
         if (feedback.isCorrect) setAcertos(prev => prev + 1);
+        invalidateStudyProgress(qc);
+        showStudyAchievements(feedback);
         refreshAccess();
       } catch (error) {
         if (isStudyLimitError(error)) setTrialBlocked(true);
@@ -177,7 +182,19 @@ export default function PatrulhamentoFase() {
     } finally { setSubmitting(false); }
   };
 
-  const handleNextQuestion = () => {
+  const handleNextQuestion = async () => {
+      if (submitting) return;
+      if (fase.tipo_fase === 'flashcards' && answeredState) {
+        setSubmitting(true);
+        try {
+          const feedback = await recordStudyFlashcardReview(Number(currentInteractionItem.id), 'good', requestId);
+          invalidateStudyProgress(qc);
+          showStudyAchievements(feedback);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Não foi possível salvar a revisão.');
+          return;
+        } finally { setSubmitting(false); }
+      }
       setRequestId(crypto.randomUUID());
       if (currentIndex + 1 < itemsList.length) {
           setCurrentIndex(prev => prev + 1);

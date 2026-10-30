@@ -6,7 +6,9 @@ import { ACHIEVEMENTS } from '@/types/achievements';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import { Scale, FileText, BookOpen, Building2, Users, PenTool, BookOpenIcon } from 'lucide-react';
 import { fetchSecureContent } from '@/services/secureContentService';
-import { answerStudyQuestion } from '@/services/studyAccessService';
+import { answerStudyQuestion, recordStudyFlashcardReview, type FlashcardRating } from '@/services/studyAccessService';
+import { invalidateStudyProgress, showStudyAchievements } from '@/lib/studyProgress';
+import { getStudyDate } from '@/lib/studyDate';
 
 /* ═══════════════════════════════════════════════════════ */
 /*  ICON MAP (UI only — not stored in DB)                 */
@@ -285,281 +287,14 @@ export function useActiveLawIdsForCourse(courseId?: number | null, editalId?: nu
 export function useRecordAnswer() {
   const qc = useQueryClient();
   const notifications = useNotificationContext();
-  
   return useMutation({
-    mutationFn: async (vars: { userId: string; questionId: number; selectedOption: string; isCorrect?: boolean; requestId?: string }) => {
-      const feedback = await answerStudyQuestion(vars.questionId, vars.selectedOption, vars.requestId || crypto.randomUUID());
-      if (feedback.replayed) return feedback;
-      vars = { ...vars, isCorrect: feedback.isCorrect === true };
-      // 1. Insert attempt
-      const { error: attErr } = await supabase.from('question_attempts').insert({
-        user_id: vars.userId,
-        question_id: vars.questionId,
-        selected_option: vars.selectedOption.toUpperCase(),
-        is_correct: vars.isCorrect,
-      });
-      if (attErr) throw attErr;
-
-      // 2. Upsert stats
-      const { data: existing } = await supabase
-        .from('user_question_stats')
-        .select('*')
-        .eq('user_id', vars.userId)
-        .eq('question_id', vars.questionId)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase.from('user_question_stats').update({
-          total_attempts: existing.total_attempts + 1,
-          total_correct: existing.total_correct + (vars.isCorrect ? 1 : 0),
-          total_wrong: existing.total_wrong + (vars.isCorrect ? 0 : 1),
-          last_answered_at: new Date().toISOString(),
-          last_selected_option: vars.selectedOption.toUpperCase(),
-          last_is_correct: vars.isCorrect,
-        }).eq('user_id', vars.userId).eq('question_id', vars.questionId);
-      } else {
-        await supabase.from('user_question_stats').insert({
-          user_id: vars.userId,
-          question_id: vars.questionId,
-          total_attempts: 1,
-          total_correct: vars.isCorrect ? 1 : 0,
-          total_wrong: vars.isCorrect ? 0 : 1,
-          first_answered_at: new Date().toISOString(),
-          last_answered_at: new Date().toISOString(),
-          last_selected_option: vars.selectedOption.toUpperCase(),
-          last_is_correct: vars.isCorrect,
-        });
-      }
-
-      // 3. Grant XP
-      const xp = vars.isCorrect ? 15 : 3;
-      await supabase.from('user_xp_logs').insert({
-        user_id: vars.userId,
-        source_type: 'question',
-        source_id: vars.questionId,
-        xp_amount: xp,
-        description: vars.isCorrect ? 'Acerto em questão' : 'Tentativa de questão',
-      });
-
-      // 4. Update profile XP
-      const { error: rpcErr } = await supabase.rpc('increment_xp', { user_id_arg: vars.userId, xp_arg: xp });
-      if (rpcErr) {
-        // fallback if RPC doesn't exist
-        const { data: profileData } = await supabase.from('profiles').select('xp_total').eq('id', vars.userId).maybeSingle();
-        if (profileData) {
-          await supabase.from('profiles').update({ xp_total: (profileData.xp_total || 0) + xp }).eq('id', vars.userId);
-        }
-      }
-
-      // 5. Update daily productivity
-      const today = new Date().toISOString().split('T')[0];
-      const { data: prod } = await supabase
-        .from('user_daily_productivity')
-        .select('*')
-        .eq('user_id', vars.userId)
-        .eq('productivity_date', today)
-        .maybeSingle();
-
-      if (prod) {
-        await supabase.from('user_daily_productivity').update({
-          questions_answered: prod.questions_answered + 1,
-          questions_correct: prod.questions_correct + (vars.isCorrect ? 1 : 0),
-          questions_wrong: prod.questions_wrong + (vars.isCorrect ? 0 : 1),
-          xp_earned: prod.xp_earned + xp,
-        }).eq('id', prod.id);
-      } else {
-        await supabase.from('user_daily_productivity').insert({
-          user_id: vars.userId,
-          productivity_date: today,
-          questions_answered: 1,
-          questions_correct: vars.isCorrect ? 1 : 0,
-          questions_wrong: vars.isCorrect ? 0 : 1,
-          xp_earned: xp,
-        });
-
-        const { data: profile } = await supabase.from('profiles').select('streak_days, last_access_at').eq('id', vars.userId).maybeSingle();
-        if (profile) {
-          let newStreak = 1;
-          if (profile.last_access_at) {
-            const lastDate = new Date(profile.last_access_at);
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            if (lastDate.toDateString() === yesterday.toDateString()) {
-              newStreak = (profile.streak_days || 0) + 1;
-            } else if (lastDate.toDateString() === new Date().toDateString()) {
-              newStreak = profile.streak_days || 1;
-            }
-          }
-        await supabase.from('profiles').update({ 
-          streak_days: newStreak, 
-          last_access_at: new Date().toISOString() 
-        }).eq('id', vars.userId);
-        }
-      }
-
-      // Update mission progress
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const { data: mission } = await supabase
-          .from('daily_missions')
-          .select('*')
-          .eq('user_id', vars.userId)
-          .eq('mission_date', today)
-          .maybeSingle();
-
-        if (mission && mission.status !== 'completed') {
-          const newQuestionsCompleted = (mission.questions_completed || 0) + 1;
-          const updates: Record<string, any> = {
-            questions_completed: newQuestionsCompleted,
-            updated_at: new Date().toISOString(),
-          };
-          if (mission.status === 'pending') {
-            updates.status = 'in_progress';
-            updates.started_at = new Date().toISOString();
-          }
-          
-          // Verificar se todas as etapas foram concluídas (considerando > 0)
-          const questionsTarget = mission.questions_count || 0;
-          const flashcardsTarget = mission.flashcards_count || 0;
-          const summaryTarget = mission.summary_count || 0;
-          
-          const allQuestionsDone = questionsTarget === 0 || newQuestionsCompleted >= questionsTarget;
-          const allFlashcardsDone = flashcardsTarget === 0 || (mission.flashcards_completed || 0) >= flashcardsTarget;
-          const allSummariesDone = summaryTarget === 0 || (mission.summary_completed || 0) >= summaryTarget;
-          
-          if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
-            updates.status = 'completed';
-            updates.completed_at = new Date().toISOString();
-            console.log('[useRecordAnswer] Missão completada!');
-          }
-          
-          await supabase
-            .from('daily_missions')
-            .update(updates)
-            .eq('id', mission.id);
-        }
-      } catch (e) {
-        console.error('[useRecordAnswer] Erro ao atualizar missão:', e);
-      }
-
-      // Check achievements
-      console.log('[useRecordAnswer] Verificando conquistas...');
-      try {
-        // Buscar conquistas já desbloqueadas
-        const { data: existingData, error: fetchErr } = await supabase
-          .from('user_achievements')
-          .select('achievement_id')
-          .eq('user_id', vars.userId);
-
-        if (fetchErr) {
-          console.error('[useRecordAnswer] Erro ao buscar conquistas:', fetchErr);
-        } else {
-          const unlockedIds = new Set(existingData?.map((a: any) => a.achievement_id) || []);
-          console.log('[useRecordAnswer] IDs desbloqueados:', Array.from(unlockedIds));
-
-          // Buscar stats
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('xp_total, streak_days')
-            .eq('id', vars.userId)
-            .single();
-
-          const { data: qStats } = await supabase
-            .from('user_question_stats')
-            .select('total_attempts, total_correct')
-            .eq('user_id', vars.userId);
-
-          const totalAnswered = qStats?.reduce((sum: number, s: any) => sum + (s.total_attempts || 0), 0) || 0;
-          const totalCorrect = qStats?.reduce((sum: number, s: any) => sum + (s.total_correct || 0), 0) || 0;
-
-          // Importar conquistas localmente para evitar dependência circular
-          // ACHIEVEMENTS já está importado no topo do arquivo
-
-          const unlocked: any[] = [];
-
-          for (const achievement of ACHIEVEMENTS) {
-            if (unlockedIds.has(achievement.id) || achievement.isSecret) continue;
-
-            let isUnlocked = false;
-
-            switch (achievement.category) {
-              case 'questions':
-                isUnlocked = totalAnswered >= achievement.requirement;
-                break;
-              case 'streak':
-                isUnlocked = (profileData?.streak_days || 0) >= achievement.requirement;
-                break;
-              case 'xp':
-                isUnlocked = (profileData?.xp_total || 0) >= achievement.requirement;
-                break;
-              case 'accuracy':
-                isUnlocked = totalCorrect >= achievement.requirement;
-                break;
-            }
-
-            if (isUnlocked) {
-              console.log(`[useRecordAnswer] ✅ Conquista: ${achievement.name}`);
-              unlocked.push(achievement);
-
-              // Inserir no banco
-              await supabase.from('user_achievements').insert({
-                user_id: vars.userId,
-                achievement_id: achievement.id,
-                unlocked_at: new Date().toISOString(),
-                notification_shown: false,
-              });
-
-              // Adicionar XP
-              if (achievement.xpReward > 0) {
-                const { error: rpcErr } = await supabase.rpc('increment_xp', {
-                  user_id_arg: vars.userId,
-                  xp_arg: achievement.xpReward,
-                });
-                if (rpcErr) {
-                  const { data: prof } = await supabase.from('profiles').select('xp_total').eq('id', vars.userId).single();
-                  if (prof) {
-                    await supabase.from('profiles').update({ xp_total: (prof.xp_total || 0) + achievement.xpReward }).eq('id', vars.userId);
-                  }
-                }
-              }
-            }
-          }
-
-          // Mostrar toast
-          if (unlocked.length > 0) {
-            if (unlocked.length === 1) {
-              const a = unlocked[0];
-              toast.success(`🏆 Conquista Desbloqueada!`, {
-                description: `${a.icon} ${a.name}\n${a.description}`,
-                duration: 6000,
-              });
-            } else {
-              toast.success(`🎉 ${unlocked.length} Conquistas Desbloqueadas!`, {
-                description: unlocked.map((a) => `${a.icon} ${a.name}`).join(' • '),
-                duration: 6000,
-              });
-            }
-          }
-        }
-        
-        // Marcar como estudado e verificar streak
-        notifications.markAsStudied();
-        
-        // Verificar e notificar streak
-      } catch (e) {
-        console.error('[useRecordAnswer] Erro geral nas conquistas:', e);
-      }
-      return feedback;
-    },
+    mutationFn: (vars: { userId: string; questionId: number; selectedOption: string; isCorrect?: boolean; requestId?: string }) =>
+      answerStudyQuestion(vars.questionId, vars.selectedOption, vars.requestId || crypto.randomUUID()),
     onSuccess: (feedback, variables) => {
-      if (feedback) qc.setQueryData(['studyAccess', variables.userId], feedback);
-      qc.invalidateQueries({ queryKey: ['studyAccess'] });
-      qc.invalidateQueries({ queryKey: ['userProfile'] });
-      qc.invalidateQueries({ queryKey: ['userProductivity'] });
-      qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
-      qc.invalidateQueries({ queryKey: ['userQuestionStats'] });
-      qc.invalidateQueries({ queryKey: ['userAchievements'] });
-      qc.invalidateQueries({ queryKey: ['daily-mission'] });
+      qc.setQueryData(['studyAccess', variables.userId], feedback);
+      invalidateStudyProgress(qc);
+      showStudyAchievements(feedback);
+      notifications.markAsStudied();
     },
   });
 }
@@ -567,259 +302,14 @@ export function useRecordAnswer() {
 export function useRecordFlashcardReview() {
   const qc = useQueryClient();
   const notifications = useNotificationContext();
-  
   return useMutation({
-    mutationFn: async (vars: { userId: string; flashcardId: number; result: 'wrong' | 'hard' | 'good' | 'easy' }) => {
-      const intervalMap = { wrong: 1, hard: 2, good: 4, easy: 7 };
-      const newInterval = intervalMap[vars.result];
-      const nextReview = new Date();
-      nextReview.setDate(nextReview.getDate() + newInterval);
-
-      // Upsert review record
-      const { data: existing } = await supabase
-        .from('user_flashcard_reviews')
-        .select('*')
-        .eq('user_id', vars.userId)
-        .eq('flashcard_id', vars.flashcardId)
-        .maybeSingle();
-
-      const isCorrect = vars.result !== 'wrong';
-
-      if (existing) {
-        await supabase.from('user_flashcard_reviews').update({
-          total_reviews: existing.total_reviews + 1,
-          total_correct: existing.total_correct + (isCorrect ? 1 : 0),
-          total_wrong: existing.total_wrong + (isCorrect ? 0 : 1),
-          current_interval_days: newInterval,
-          last_review_result: vars.result,
-          last_reviewed_at: new Date().toISOString(),
-          next_review_at: nextReview.toISOString(),
-          memory_stage: isCorrect ? Math.min(existing.memory_stage + 1, 10) : 1,
-          is_mastered: isCorrect && existing.memory_stage >= 5,
-        }).eq('user_id', vars.userId).eq('flashcard_id', vars.flashcardId);
-      } else {
-        await supabase.from('user_flashcard_reviews').insert({
-          user_id: vars.userId,
-          flashcard_id: vars.flashcardId,
-          total_reviews: 1,
-          total_correct: isCorrect ? 1 : 0,
-          total_wrong: isCorrect ? 0 : 1,
-          current_interval_days: newInterval,
-          last_review_result: vars.result,
-          last_reviewed_at: new Date().toISOString(),
-          next_review_at: nextReview.toISOString(),
-          memory_stage: isCorrect ? 2 : 1,
-        });
-      }
-
-      // Log the review
-      await supabase.from('flashcard_review_logs').insert({
-        user_id: vars.userId,
-        flashcard_id: vars.flashcardId,
-        review_result: vars.result,
-        interval_after: newInterval,
-      });
-
-      // XP
-      const xp = 5;
-      const { error: rpcErr } = await supabase.rpc('increment_xp', { user_id_arg: vars.userId, xp_arg: xp });
-      if (rpcErr) {
-         const { data: profileData } = await supabase.from('profiles').select('xp_total').eq('id', vars.userId).maybeSingle();
-         if (profileData) {
-            await supabase.from('profiles').update({ xp_total: (profileData.xp_total || 0) + xp }).eq('id', vars.userId);
-         }
-      }
-
-      // Daily productivity
-      const today = new Date().toISOString().split('T')[0];
-      const { data: prod } = await supabase
-        .from('user_daily_productivity')
-        .select('*')
-        .eq('user_id', vars.userId)
-        .eq('productivity_date', today)
-        .maybeSingle();
-
-      if (prod) {
-        await supabase.from('user_daily_productivity').update({
-          flashcards_reviewed: prod.flashcards_reviewed + 1,
-          xp_earned: prod.xp_earned + xp,
-        }).eq('id', prod.id);
-      } else {
-        await supabase.from('user_daily_productivity').insert({
-          user_id: vars.userId,
-          productivity_date: today,
-          flashcards_reviewed: 1,
-          xp_earned: xp,
-        });
-
-        // Compute streak
-        const { data: profile } = await supabase.from('profiles').select('streak_days, last_access_at').eq('id', vars.userId).maybeSingle();
-        if (profile) {
-          let newStreak = 1;
-          if (profile.last_access_at) {
-            const lastDate = new Date(profile.last_access_at);
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            if (lastDate.toDateString() === yesterday.toDateString()) {
-              newStreak = (profile.streak_days || 0) + 1;
-            } else if (lastDate.toDateString() === new Date().toDateString()) {
-              newStreak = profile.streak_days || 1;
-            }
-          }
-          await supabase.from('profiles').update({ 
-            streak_days: newStreak, 
-            last_access_at: new Date().toISOString() 
-          }).eq('id', vars.userId);
-        }
-      }
-
-      // Update mission progress for flashcards
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const { data: mission } = await supabase
-          .from('daily_missions')
-          .select('*')
-          .eq('user_id', vars.userId)
-          .eq('mission_date', today)
-          .maybeSingle();
-
-        if (mission && mission.status !== 'completed') {
-          const newFlashcardsCompleted = (mission.flashcards_completed || 0) + 1;
-          const updates: Record<string, any> = {
-            flashcards_completed: newFlashcardsCompleted,
-            updated_at: new Date().toISOString(),
-          };
-          if (mission.status === 'pending') {
-            updates.status = 'in_progress';
-            updates.started_at = new Date().toISOString();
-          }
-          
-          // Verificar se todas as etapas foram concluídas (considerando > 0)
-          const questionsTarget = mission.questions_count || 0;
-          const flashcardsTarget = mission.flashcards_count || 0;
-          const summaryTarget = mission.summary_count || 0;
-          
-          const allQuestionsDone = questionsTarget === 0 || (mission.questions_completed || 0) >= questionsTarget;
-          const allFlashcardsDone = flashcardsTarget === 0 || newFlashcardsCompleted >= flashcardsTarget;
-          const allSummariesDone = summaryTarget === 0 || (mission.summary_completed || 0) >= summaryTarget;
-          
-          if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
-            updates.status = 'completed';
-            updates.completed_at = new Date().toISOString();
-            console.log('[useRecordFlashcardReview] Missão completada!');
-          }
-          
-          await supabase
-            .from('daily_missions')
-            .update(updates)
-            .eq('id', mission.id);
-        }
-      } catch (e) {
-        console.error('[useRecordFlashcardReview] Erro ao atualizar missão:', e);
-      }
-
-      // Check achievements for flashcards
-      console.log('[useRecordFlashcardReview] Verificando conquistas...');
-      try {
-        const { data: existingData, error: fetchErr } = await supabase
-          .from('user_achievements')
-          .select('achievement_id')
-          .eq('user_id', vars.userId);
-
-        if (fetchErr) {
-          console.error('[useRecordFlashcardReview] Erro ao buscar conquistas:', fetchErr);
-        } else {
-          const unlockedIds = new Set(existingData?.map((a: any) => a.achievement_id) || []);
-
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('xp_total, streak_days')
-            .eq('id', vars.userId)
-            .single();
-
-          const { data: allFlashcards } = await supabase
-            .from('user_flashcard_reviews')
-            .select('total_reviews')
-            .eq('user_id', vars.userId);
-
-          const totalFlashcards = allFlashcards?.reduce((sum: number, s: any) => sum + (s.total_reviews || 0), 0) || 0;
-
-          // ACHIEVEMENTS já está importado no topo do arquivo
-
-          const unlocked: any[] = [];
-
-          for (const achievement of ACHIEVEMENTS) {
-            if (unlockedIds.has(achievement.id) || achievement.isSecret) continue;
-
-            let isUnlocked = false;
-
-            switch (achievement.category) {
-              case 'flashcards':
-                isUnlocked = totalFlashcards >= achievement.requirement;
-                break;
-              case 'streak':
-                isUnlocked = (profileData?.streak_days || 0) >= achievement.requirement;
-                break;
-              case 'xp':
-                isUnlocked = (profileData?.xp_total || 0) >= achievement.requirement;
-                break;
-            }
-
-            if (isUnlocked) {
-              console.log(`[useRecordFlashcardReview] ✅ Conquista: ${achievement.name}`);
-              unlocked.push(achievement);
-
-              await supabase.from('user_achievements').insert({
-                user_id: vars.userId,
-                achievement_id: achievement.id,
-                unlocked_at: new Date().toISOString(),
-                notification_shown: false,
-              });
-
-              if (achievement.xpReward > 0) {
-                const { error: rpcErr } = await supabase.rpc('increment_xp', {
-                  user_id_arg: vars.userId,
-                  xp_arg: achievement.xpReward,
-                });
-                if (rpcErr) {
-                  const { data: prof } = await supabase.from('profiles').select('xp_total').eq('id', vars.userId).single();
-                  if (prof) {
-                    await supabase.from('profiles').update({ xp_total: (prof.xp_total || 0) + achievement.xpReward }).eq('id', vars.userId);
-                  }
-                }
-              }
-            }
-          }
-
-          if (unlocked.length > 0) {
-            if (unlocked.length === 1) {
-              const a = unlocked[0];
-              toast.success(`🏆 Conquista Desbloqueada!`, {
-                description: `${a.icon} ${a.name}\n${a.description}`,
-                duration: 6000,
-              });
-            } else {
-              toast.success(`🎉 ${unlocked.length} Conquistas Desbloqueadas!`, {
-                description: unlocked.map((a) => `${a.icon} ${a.name}`).join(' • '),
-                duration: 6000,
-              });
-            }
-          }
-          
-          // Marcar como estudado e verificar streak
-          notifications.markAsStudied();
-        }
-      } catch (e) {
-        console.error('[useRecordFlashcardReview] Erro geral nas conquistas:', e);
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['userProfile'] });
-      qc.invalidateQueries({ queryKey: ['userProductivity'] });
-      qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
-      qc.invalidateQueries({ queryKey: ['flashcards'] });
-      qc.invalidateQueries({ queryKey: ['userAchievements'] });
-      qc.invalidateQueries({ queryKey: ['daily-mission'] });
+    mutationFn: (vars: { userId: string; flashcardId: number; result: FlashcardRating; requestId: string }) =>
+      recordStudyFlashcardReview(vars.flashcardId, vars.result, vars.requestId),
+    onSuccess: (feedback, variables) => {
+      qc.setQueryData(['studyAccess', variables.userId], feedback);
+      invalidateStudyProgress(qc);
+      showStudyAchievements(feedback);
+      notifications.markAsStudied();
     },
   });
 }
@@ -842,17 +332,18 @@ export function useUserProfile(userId: string | undefined) {
 }
 
 export function useUserProductivity(userId: string | undefined) {
+  const today = getStudyDate();
   return useQuery({
-    queryKey: ['userProductivity', userId],
+    queryKey: ['userProductivity', userId, today],
     queryFn: async () => {
       if (!userId) return null;
-      const today = new Date().toISOString().split('T')[0];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_daily_productivity')
         .select('*')
         .eq('user_id', userId)
         .eq('productivity_date', today)
         .maybeSingle();
+      if (error) throw error;
       return data;
     },
     enabled: !!userId,
@@ -865,10 +356,11 @@ export function useUserLifetimeUsage(userId: string | undefined) {
     queryKey: ['userLifetimeUsage', userId],
     queryFn: async () => {
       if (!userId) return { questionsAndFlashcards: 0, summaries: 0 };
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_daily_productivity')
         .select('questions_answered, flashcards_reviewed, summaries_read')
         .eq('user_id', userId);
+      if (error) throw error;
         
       if (!data) return { questionsAndFlashcards: 0, summaries: 0 };
       
@@ -891,7 +383,7 @@ export function useUserQuestionStats(userId: string | undefined) {
         .from('user_question_stats')
         .select('*')
         .eq('user_id', userId);
-      if (error) return [];
+      if (error) throw error;
       return data || [];
     },
     enabled: !!userId,
@@ -907,7 +399,7 @@ export function useUserFlashcardReviews(userId: string | undefined) {
         .from('user_flashcard_reviews')
         .select('*')
         .eq('user_id', userId);
-      if (error) return [];
+      if (error) throw error;
       return data || [];
     },
     enabled: !!userId,

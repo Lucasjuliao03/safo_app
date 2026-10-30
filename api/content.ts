@@ -118,12 +118,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let trialLimit = Number.POSITIVE_INFINITY;
     if (!entitled && type === "summaries") {
-      const { count, error } = await supabase
-        .from("user_summary_views")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id);
-      if (error) throw error;
-      trialLimit = (count ?? 0) >= 2 ? 0 : 2;
+      // Keep the same two sample summaries available for rereading. The server
+      // records reads independently; question/flashcard quota does not hide them.
+      trialLimit = 2;
     }
 
     // The student's edital comes from the profile, never from query parameters.

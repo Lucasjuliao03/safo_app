@@ -40,11 +40,23 @@ A migration restringe dados pessoais, impede autoelevação de privilégio, fech
 
 ### Catálogo completo e degustação de dez usos
 
-Aplicar `supabase/migrations/20261029214747_enforce_lifetime_trial.sql` ANTES de publicar o frontend/API desta versão. A migração exige a baseline de segurança e cria um contador privado com bloqueio por conta. Sem ela, `/api/study` recusa o uso com 503; o sistema não usa contadores locais como fallback.
+Para corrigir instalações existentes, abra o SQL Editor do projeto `melyesnqvbatmpxvotwc` e execute **o arquivo inteiro** [INSTALAR_CORRECAO_ESTUDOS.sql](../sql/INSTALAR_CORRECAO_ESTUDOS.sql). Ele instala os helpers de autorização, o contador privado e a persistência de estudo em uma transação, sem apagar histórico nem zerar os usos existentes. Pode ser reexecutado. Se houver registros duplicados impedindo índices únicos, a instalação será desfeita; preserve os dados e investigue as duplicidades antes de tentar novamente.
+
+Execute em uma única aba, com o app fechado e sem outras consultas SQL em execução. O instalador agora adquire todos os bloqueios necessários antes de ler ou alterar dados, sem esperar por tabelas ocupadas. Um bloqueio consultivo também impede duas instalações simultâneas. Se retornar `55P03` com "Instalação adiada", nenhuma alteração dessa tentativa foi aplicada: aguarde alguns segundos e execute o arquivo inteiro novamente. Não execute fragmentos nem duas cópias em paralelo. A instalação anterior que retornou `40P01` foi abortada pelo PostgreSQL e, quando o arquivo inteiro foi executado como instruído, não deve ter deixado alterações parciais.
+
+Se continuar ocupado, execute [DIAGNOSTICAR_BLOQUEIOS_ESTUDOS.sql](../sql/DIAGNOSTICAR_BLOQUEIOS_ESTUDOS.sql) para identificar as sessões envolvidas. Essa consulta é somente leitura e não encerra conexões. Os testes embarcados validam o SQL e o rollback; como o PGlite usa um único backend, não substituem um ensaio de contenção entre múltiplas conexões no Supabase.
+
+Depois execute [VERIFICAR_CORRECAO_ESTUDOS.sql](../sql/VERIFICAR_CORRECAO_ESTUDOS.sql). As verificações devem retornar `true`, incluindo as quatro funções e o bloqueio de gravações diretas pelo navegador. Em seguida publique o **código atualizado completo** na Vercel, com `api/`, `server/`, `src/` e `vercel.json`. Não basta executar o SQL e continuar usando o bundle antigo, que ainda tenta inserir em `question_attempts` pelo navegador.
+
+O instalador reúne `20261029214747_enforce_lifetime_trial.sql` e `20261030004029_atomic_study_progress.sql`. Gere novamente com `node scripts/build-study-sql.mjs` após editar essas migrations; `node scripts/build-study-sql.mjs --check` verifica se o arquivo está sincronizado. Projetos gerenciados por migrations devem aplicar as duas na ordem. Não é necessário reaplicar migrations financeiras para essa correção.
+
+As variáveis de servidor obrigatórias são `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY` (ou `VITE_SUPABASE_ANON_KEY`) e `APP_URL`, apontando para o mesmo projeto/origem do frontend. Sem as funções, `/api/study` retorna 503 com `study_setup_required`; não há fallback que conceda acesso extra.
 
 O catálogo mostra todas as questões/flashcards do curso e edital, sem gabaritos, explicações ou versos. Confirmar uma questão ou revelar um flashcard consome um dos dez usos combinados, na vida toda da conta. Navegar e selecionar não consomem. Resumos mantêm o limite de dois já existente. Após dez usos, somente a ativação administrativa/assinatura vigente libera novas correções/revelações.
 
 A API autentica o usuário, usa somente o ID da sessão, valida o conteúdo no banco e chama uma função disponível apenas à service role. Requisições simultâneas são serializadas por conta; reenviar o mesmo requestId e conteúdo não cobra novamente nem permite escolher outro item com o mesmo requestId. Trocar curso, aba, navegador, limpar storage ou alterar produtividade não zera a quota privada.
+
+Confirmar uma questão grava, na mesma transação, quota, tentativa, estatísticas, XP, produtividade, sequência, missão e conquistas. Se qualquer gravação falhar, tudo é desfeito. A avaliação do flashcard usa o mesmo requestId da revelação, pode salvar a décima revisão sem consumir um 11º uso e só avança após salvar. Resumos têm persistência própria e os dois resumos gratuitos continuam disponíveis para releitura. O ranking lê a produtividade atual com datas de Brasília, sem depender de um snapshot antigo de `ranking_global`.
 
 Executar os testes de PostgreSQL local em `src/test/trial-postgres.test.ts`. Depois de aplicar a migração, validar com conta temporária: catálogo inteiro, dez usos combinados, 11º bloqueado, login novamente ainda bloqueado e ativação liberando novo uso. Não publicar apenas o frontend antes de preparar o banco.
 

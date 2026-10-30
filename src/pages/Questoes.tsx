@@ -92,7 +92,7 @@ function QuestionCard({ question, subjectName, subjectIcon: SubjectIcon, onNext,
           }
 
           return (
-            <button key={opt.id} onClick={() => !confirmed && setSelected(opt.id)} disabled={confirmed}
+            <button key={opt.id} onClick={() => !confirmed && setSelected(opt.id)} disabled={confirmed || submitting}
               className={cn("w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all active:scale-[0.98]", optStyle)}>
               <span className={cn("flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold",
                 confirmed && isRight ? "bg-success text-success-foreground" :

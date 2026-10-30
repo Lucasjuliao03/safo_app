@@ -12,6 +12,7 @@ import { useUserStreakStats } from "@/hooks/useUserStreakStats";
 import { StudentEvolutionCard } from "@/components/StudentEvolutionCard";
 import { useStudentEvolution } from "@/hooks/useStudentEvolution";
 import { formatDisplayName } from "@/hooks/useNickname";
+import { StudyLoadError } from '@/components/StudyLoadError';
 
 export default function HomePage() {
   const { user, isAdmin } = useAuth();
@@ -77,6 +78,7 @@ export default function HomePage() {
           </div>
         </div>
 
+        {accessStatus.reason === 'unavailable' && <StudyLoadError error={accessStatus.error} />}
         {!accessStatus.isLoading && accessStatus.isOnTrial && !accessStatus.canAccess && (
           <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-4 flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />

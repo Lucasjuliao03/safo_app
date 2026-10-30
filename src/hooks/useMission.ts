@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { fetchSecureContent } from '@/services/secureContentService';
+import { getStudyDate } from '@/lib/studyDate';
 
 export interface DailyMission {
   id: string;
@@ -32,14 +33,15 @@ export interface MissionProgress {
 
 export function useDailyMission(userId: string | undefined, courseId: string | null) {
   const queryClient = useQueryClient();
+  const missionDay = getStudyDate();
 
   // Buscar missão do dia
   const { data: mission, isLoading, refetch } = useQuery({
-    queryKey: ['daily-mission', userId, courseId],
+    queryKey: ['daily-mission', userId, courseId, missionDay],
     queryFn: async (): Promise<DailyMission | null> => {
       if (!userId) return null;
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = getStudyDate();
       
       // Tentar buscar missão existente
       const { data, error } = await supabase
@@ -68,7 +70,7 @@ export function useDailyMission(userId: string | undefined, courseId: string | n
 
   // Criar missão
   const createMission = async (uid: string, courseId: string | null): Promise<DailyMission> => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getStudyDate();
     
     const [questions, flashcards] = await Promise.all([
       fetchSecureContent<{ id: number }>('questions', { courseId }),

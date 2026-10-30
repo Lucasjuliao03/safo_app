@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { StudyLoadError } from "@/components/StudyLoadError";
 import { FileText, ChevronLeft, BookOpen, CheckCircle, BookOpenIcon, Folder } from "lucide-react";
@@ -6,9 +6,11 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubjects, useSummaries, useTopics, SUBJECT_UI_MAP, useActiveLawIdsForCourse } from "@/hooks/useStudyData";
-import { canAccessSummaries, isUserActive } from "@/services/accessService";
+import { isUserActive } from "@/services/accessService";
 import { BlockedOverlay } from "@/components/BlockedOverlay";
-import { useAccessStatus } from "@/hooks/useAccessStatus";
+import { recordSummaryRead } from '@/services/studyAccessService';
+import { invalidateStudyProgress, showStudyAchievements } from '@/lib/studyProgress';
+import { toast } from 'sonner';
 import { supabase } from "@/lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
 import { MarkdownRenderer } from "@/components/mdx/MarkdownRenderer";
@@ -38,6 +40,9 @@ export default function ResumosPage() {
   const [viewedSummaryIds, setViewedSummaryIds] = useState<Set<string>>(new Set());
   const [viewedSummaryCounts, setViewedSummaryCounts] = useState<Map<string, number>>(new Map());
 
+  const readingRequest = useRef<{ id: string; requestId: string } | null>(null);
+  const [savingRead, setSavingRead] = useState(false);
+
   // Carregar resumos já visualizados do banco
   useEffect(() => {
     if (user?.id) {
@@ -58,115 +63,17 @@ export default function ResumosPage() {
     }
   }, [user?.id]);
 
-  const updateMissionProgress = async (userId: string, summaryId: string, currentCount: number) => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Registrar visualização do resumo, incrementando a contagem de vezes lidas
-      await supabase.from('user_summary_views').upsert({
-        user_id: userId,
-        summary_id: summaryId,
-        viewed_date: today,
-        read_count: currentCount + 1,
-      }, {
-        onConflict: 'user_id,summary_id',
-      });
-      
-      // Atualizar productivity do dia com resumo
-      const { data: prod } = await supabase
-        .from('user_daily_productivity')
-        .select('id, summaries_read')
-        .eq('user_id', userId)
-        .eq('productivity_date', today)
-        .maybeSingle();
-
-      if (prod) {
-        await supabase.from('user_daily_productivity').update({
-          summaries_read: (prod.summaries_read || 0) + 1,
-        }).eq('id', prod.id);
-      } else {
-        await supabase.from('user_daily_productivity').insert({
-          user_id: userId,
-          productivity_date: today,
-          summaries_read: 1,
-        });
-      }
-      
-      // Atualizar missão
-      const { data: mission } = await supabase
-        .from('daily_missions')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('mission_date', today)
-        .maybeSingle();
-
-      if (mission && mission.status !== 'completed') {
-        const newSummaryCompleted = (mission.summary_completed || 0) + 1;
-        const updates: Record<string, any> = {
-          summary_completed: newSummaryCompleted,
-          updated_at: new Date().toISOString(),
-        };
-        if (mission.status === 'pending') {
-          updates.status = 'in_progress';
-          updates.started_at = new Date().toISOString();
-        }
-        
-        // Verificar se todas as etapas foram concluídas (considerando > 0)
-        const questionsTarget = mission.questions_count || 0;
-        const flashcardsTarget = mission.flashcards_count || 0;
-        const summaryTarget = mission.summary_count || 0;
-        
-        const allQuestionsDone = questionsTarget === 0 || (mission.questions_completed || 0) >= questionsTarget;
-        const allFlashcardsDone = flashcardsTarget === 0 || (mission.flashcards_completed || 0) >= flashcardsTarget;
-        const allSummariesDone = summaryTarget === 0 || newSummaryCompleted >= summaryTarget;
-        
-        if (allQuestionsDone && allFlashcardsDone && allSummariesDone) {
-          updates.status = 'completed';
-          updates.completed_at = new Date().toISOString();
-          console.log('[Resumos] Missão completada!');
-        }
-        
-        await supabase
-          .from('daily_missions')
-          .update(updates)
-          .eq('id', mission.id);
-        qc.invalidateQueries({ queryKey: ['daily-mission'] });
-        qc.invalidateQueries({ queryKey: ['userProductivity'] });
-        qc.invalidateQueries({ queryKey: ['userLifetimeUsage'] });
-        qc.invalidateQueries({ queryKey: ['studentEvolution'] });
-        qc.invalidateQueries({ queryKey: ['summaries'] });
-      } else if (mission) {
-         // Mission exists but already completed, just invalidate evolution
-         qc.invalidateQueries({ queryKey: ['studentEvolution'] });
-      } else {
-         qc.invalidateQueries({ queryKey: ['studentEvolution'] });
-      }
-    } catch (e) {
-      console.error('[Resumos] Erro ao atualizar missão:', e);
-    }
-  };
-
-  const accessStatus = useAccessStatus();
-  
   if (subjectsError || topicsError || summariesError) {
     return <AppLayout><StudyLoadError error={subjectsError || topicsError || summariesError} /></AppLayout>;
   }
-  if (loadingSub || loadingSum || loadingTop || accessStatus.isLoading) {
+  if (loadingSub || loadingSum || loadingTop) {
     return <AppLayout><div className="p-8 text-center text-muted-foreground">Carregando resumos...</div></AppLayout>;
   }
 
   const active = isUserActive(user);
   
-  const readCount = viewedSummaryIds.size;
-  const summaryLimitReached = !canAccessSummaries(user, readCount);
-  const globalTrialExhausted = accessStatus.reason === "trial_exhausted";
-
   if (!active) {
     return <AppLayout><BlockedOverlay reason="expired" /></AppLayout>;
-  }
-
-  if ((summaryLimitReached || globalTrialExhausted) && !user?.isApproved) {
-    return <AppLayout><BlockedOverlay readCount={readCount} reason="limit_reached" /></AppLayout>;
   }
 
   if (!isAdmin && !courseId) {
@@ -180,23 +87,21 @@ export default function ResumosPage() {
     );
   }
 
-  const handleSelectSummary = (id: string) => {
-    const isNewlyViewed = true; // Sempre contar cliques! Ou seja, atualizar o read_count na hora se o usuário acessou para estudar de novo.
-    
-    // Bloquear limite de acessos apenas se for a primeira vez que ele abre (viewedSummaryIds.has(id))
-    if (!user?.isApproved && !viewedSummaryIds.has(id)) {
-      if (readCount >= 2) return;
-    }
-    
-    if (user?.id) {
-      const currentCount = viewedSummaryCounts.get(id) || 0;
-      updateMissionProgress(user.id, id, currentCount);
-      // Update local optimistically
+  const handleSelectSummary = async (id: string) => {
+    if (!user || savingRead) return;
+    if (readingRequest.current?.id !== id) readingRequest.current = { id, requestId: crypto.randomUUID() };
+    setSavingRead(true);
+    try {
+      const feedback = await recordSummaryRead(Number(id), readingRequest.current.requestId);
       setViewedSummaryIds(prev => new Set([...prev, id]));
-      setViewedSummaryCounts(prev => new Map(prev).set(id, currentCount + 1));
-    }
-    
-    setSelectedSummaryId(id);
+      setViewedSummaryCounts(prev => new Map(prev).set(id, feedback.readCount));
+      readingRequest.current = null;
+      setSelectedSummaryId(id);
+      invalidateStudyProgress(qc);
+      showStudyAchievements(feedback);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível registrar a leitura. Tente novamente.');
+    } finally { setSavingRead(false); }
   };
 
   // Group summaries by subject
@@ -273,7 +178,7 @@ export default function ResumosPage() {
               const isViewed = viewedSummaryIds.has(summary.id);
               
               return (
-                <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
+                <button key={summary.id} onClick={() => handleSelectSummary(summary.id)} disabled={savingRead}
                   className={cn("w-full flex items-center justify-between rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]", isViewed && "border-success/30 bg-success/5")}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg border", isViewed ? "bg-success/20 border-success/30" : "bg-primary/10 border-primary/20")}>
@@ -366,7 +271,7 @@ export default function ResumosPage() {
                   {floatingSummaries.map(summary => {
                     const isViewed = viewedSummaryIds.has(summary.id);
                     return (
-                      <button key={summary.id} onClick={() => handleSelectSummary(summary.id)}
+                      <button key={summary.id} onClick={() => handleSelectSummary(summary.id)} disabled={savingRead}
                         className={cn("w-full flex items-center justify-between rounded-xl bg-card border border-border p-4 text-left transition-all hover:border-primary/40 active:scale-[0.98]", isViewed && "border-success/30 bg-success/5")}>
                         <div className="flex items-center gap-3 min-w-0">
                           <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg border", isViewed ? "bg-success/20 border-success/30" : "bg-primary/10 border-primary/20")}>

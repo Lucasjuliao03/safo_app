@@ -16,13 +16,14 @@ import { toast } from 'sonner';
 
 function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
   card: Flashcard;
-  onRate: (rating: "wrong" | "hard" | "good" | "easy") => void;
+  onRate: (rating: "wrong" | "hard" | "good" | "easy", requestId: string) => Promise<void>;
   onRevealed: () => void;
   onBlocked: () => void;
 }) {
   const [flipped, setFlipped] = useState(false);
   const [back, setBack] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [savingReview, setSavingReview] = useState(false);
   const [requestId] = useState(() => crypto.randomUUID());
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -40,6 +41,13 @@ function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
       if (isStudyLimitError(error)) onBlocked();
       toast.error(error instanceof Error ? error.message : 'Não foi possível revelar o flashcard.');
     } finally { setRevealing(false); }
+  };
+  const rate = async (rating: "wrong" | "hard" | "good" | "easy") => {
+    if (savingReview) return;
+    setSavingReview(true);
+    try { await onRate(rating, requestId); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Não foi possível salvar a revisão. Tente novamente.'); }
+    finally { setSavingReview(false); }
   };
   const { data: subjects = [] } = useSubjects();
   const subject = subjects.find((s) => s.id === card.subjectId);
@@ -63,7 +71,7 @@ function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
         )}
       </div>
 
-      <button onClick={reveal} disabled={revealing}
+      <button onClick={reveal} disabled={revealing || savingReview}
         className="w-full min-h-[280px] rounded-2xl border border-border bg-card p-6 text-left transition-all active:scale-[0.98] relative overflow-hidden">
         <div className="absolute top-3 right-3">
           <span className="text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -85,19 +93,19 @@ function FlashcardViewer({ card, onRate, onRevealed, onBlocked }: {
         <div className="space-y-2 animate-slide-up">
           <p className="text-xs text-center text-muted-foreground">Como foi?</p>
           <div className="grid grid-cols-4 gap-2">
-            <button onClick={() => onRate("wrong")} className="flex flex-col items-center gap-1.5 rounded-xl bg-destructive/10 border border-destructive/20 py-3 active:scale-[0.95] transition-all">
+            <button onClick={() => rate("wrong")} disabled={savingReview} className="flex flex-col items-center gap-1.5 rounded-xl bg-destructive/10 border border-destructive/20 py-3 active:scale-[0.95] transition-all">
               <X className="h-5 w-5 text-destructive" />
               <span className="text-xs font-medium text-destructive">Errei</span>
             </button>
-            <button onClick={() => onRate("hard")} className="flex flex-col items-center gap-1.5 rounded-xl bg-warning/10 border border-warning/20 py-3 active:scale-[0.95] transition-all">
+            <button onClick={() => rate("hard")} disabled={savingReview} className="flex flex-col items-center gap-1.5 rounded-xl bg-warning/10 border border-warning/20 py-3 active:scale-[0.95] transition-all">
               <HelpCircle className="h-5 w-5 text-warning" />
               <span className="text-xs font-medium text-warning">Difícil</span>
             </button>
-            <button onClick={() => onRate("good")} className="flex flex-col items-center gap-1.5 rounded-xl bg-primary/10 border border-primary/20 py-3 active:scale-[0.95] transition-all">
+            <button onClick={() => rate("good")} disabled={savingReview} className="flex flex-col items-center gap-1.5 rounded-xl bg-primary/10 border border-primary/20 py-3 active:scale-[0.95] transition-all">
               <Check className="h-5 w-5 text-primary" />
               <span className="text-xs font-medium text-primary">Bom</span>
             </button>
-            <button onClick={() => onRate("easy")} className="flex flex-col items-center gap-1.5 rounded-xl bg-success/10 border border-success/20 py-3 active:scale-[0.95] transition-all">
+            <button onClick={() => rate("easy")} disabled={savingReview} className="flex flex-col items-center gap-1.5 rounded-xl bg-success/10 border border-success/20 py-3 active:scale-[0.95] transition-all">
               <Check className="h-5 w-5 text-success" />
               <span className="text-xs font-medium text-success">Fácil</span>
             </button>
@@ -344,15 +352,16 @@ export default function FlashcardsPage() {
     );
   }
 
-  const handleRate = (rating: "wrong" | "hard" | "good" | "easy") => {
-    setRevealedCurrent(false);
+  const handleRate = async (rating: "wrong" | "hard" | "good" | "easy", requestId: string) => {
     if (user && sessionQueue[currentIndex]) {
-      recordReview.mutate({
+      await recordReview.mutateAsync({
         userId: user.id,
         flashcardId: parseInt(sessionQueue[currentIndex].id),
         result: rating,
+        requestId,
       });
-    }
+    } else { throw new Error('Sessão indisponível. Entre novamente.'); }
+    setRevealedCurrent(false);
 
     if (currentIndex + 1 >= sessionQueue.length) {
       setIsFinished(true);

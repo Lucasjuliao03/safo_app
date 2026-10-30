@@ -29,7 +29,7 @@ describe('authenticated study API', () => {
   it('binds quota to the verified session and ignores forged user/role/usage/activation fields', async () => {
     const result = await request('POST', { ...body, userId: 'other', entitled: true, used: 0, is_active: true } as typeof body);
     expect(result.code).toBe(200);
-    expect(state.rpc).toHaveBeenCalledWith('consume_study_use', {
+    expect(state.rpc).toHaveBeenCalledWith('complete_study_use', {
       p_user_id: state.user!.id, p_request_id: body.requestId, p_content_type: 'questions', p_content_id: 1, p_answer_key: 'b',
     });
     expect(result.response.isCorrect).toBe(false);
@@ -59,5 +59,25 @@ describe('authenticated study API', () => {
   it('reads lifetime status from the protected database instead of browser counters', async () => {
     expect((await request('GET')).code).toBe(200);
     expect(state.rpc).toHaveBeenCalledWith('get_study_access', { p_user_id: state.user!.id });
+  });
+  it('records a flashcard rating against the already authorized reveal request', async () => {
+    expect((await request('POST', { type: 'flashcard_review', id: 1, rating: 'good', requestId: body.requestId } as unknown as typeof body)).code).toBe(200);
+    expect(state.rpc).toHaveBeenCalledWith('record_study_review', {
+      p_user_id: state.user!.id, p_request_id: body.requestId, p_flashcard_id: 1, p_rating: 'good',
+    });
+    expect((await request('POST', { type: 'flashcard_review', id: 1, rating: 'fake', requestId: body.requestId } as unknown as typeof body)).code).toBe(400);
+  });
+  it('records summary reads separately from the combined question/card quota', async () => {
+    expect((await request('POST', { type: 'summary_read', id: 2, requestId: body.requestId } as unknown as typeof body)).code).toBe(200);
+    expect(state.rpc).toHaveBeenCalledWith('record_summary_read', {
+      p_user_id: state.user!.id, p_request_id: body.requestId, p_summary_id: 2,
+    });
+  });
+  it('reports a missing database setup without exposing SQL details or inventing free access', async () => {
+    state.rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'internal database details' } });
+    const result = await request('GET');
+    expect(result.code).toBe(503);
+    expect(result.response.code).toBe('study_setup_required');
+    expect(JSON.stringify(result.response)).not.toContain('internal database details');
   });
 });

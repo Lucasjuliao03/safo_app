@@ -174,20 +174,20 @@ export default function PerfilPage() {
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground mt-1">
-                    {accessStatus.isOnTrial ? (
-                      `Plano Gratuito (${accessStatus.trialRemaining} usos hoje)`
+                    {accessStatus.reason === 'unavailable' ? 'Status de acesso indisponível' : accessStatus.isOnTrial ? (
+                      `Plano Gratuito (${accessStatus.trialRemaining} usos restantes)`
                     ) : (
                       "Acesso Expirado"
                     )}
                   </p>
                 )}
               </div>
-              <Link 
+              {accessStatus.reason !== 'unavailable' && <Link
                 to="/assinar"
                 className="bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
               >
                 {accessStatus.isPaid ? "Renovar" : "Assinar agora"}
-              </Link>
+              </Link>}
             </div>
             {accessStatus.isPaid && daysLeft !== null && (
               <div>

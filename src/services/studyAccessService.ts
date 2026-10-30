@@ -4,6 +4,11 @@ import { validAccessToken } from './secureContentService';
 export interface StudyAccess { entitled: boolean; used: number; remaining: number | null; limit: number; expired?: boolean }
 export interface StudyFeedback extends StudyAccess {
   correctOption?: string; explanation?: string; isCorrect?: boolean; back?: string; replayed: boolean;
+  earnedXp?: number; unlockedAchievementIds?: string[];
+}
+export type FlashcardRating = 'wrong' | 'hard' | 'good' | 'easy';
+export interface SummaryReadFeedback {
+  readCount: number; replayed: boolean; earnedXp?: number; unlockedAchievementIds?: string[];
 }
 async function studyRequest<T extends object>(body?: object): Promise<T> {
   const { token } = await validAccessToken();
@@ -19,6 +24,10 @@ export const answerStudyQuestion = (id: number, selectedOption: string, requestI
   studyRequest<StudyFeedback>({ type: 'questions', id, selectedOption, requestId });
 export const revealStudyFlashcard = (id: number, requestId: string) =>
   studyRequest<StudyFeedback>({ type: 'flashcards', id, requestId });
+export const recordStudyFlashcardReview = (id: number, rating: FlashcardRating, requestId: string) =>
+  studyRequest<StudyFeedback>({ type: 'flashcard_review', id, rating, requestId });
+export const recordSummaryRead = (id: number, requestId: string) =>
+  studyRequest<SummaryReadFeedback>({ type: 'summary_read', id, requestId });
 export function isStudyLimitError(error: unknown): boolean {
   return error instanceof ApiResponseError && error.status === 403 && error.code === 'trial_exhausted';
 }

@@ -8,9 +8,10 @@ import FlashcardsPage from '@/pages/Flashcards';
 import { useAccessStatus } from '@/hooks/useAccessStatus';
 import type { StudyFeedback } from '@/services/studyAccessService';
 import type { Question } from '@/types/study';
+import { ApiResponseError } from '@/lib/apiJson';
 
 const state = vi.hoisted(() => ({ user: { id: 'student', courseId: 1, role: 'student', isApproved: false },
-  answer: vi.fn(), reveal: vi.fn(), readAccess: vi.fn() }));
+  answer: vi.fn(), reveal: vi.fn(), review: vi.fn(), readAccess: vi.fn() }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: state.user, isAdmin: false, loading: false }) }));
 vi.mock('@/components/AppLayout', () => ({ AppLayout: ({ children }: { children: ReactNode }) => <>{children}</> }));
 vi.mock('@/services/studyAccessService', () => ({
@@ -32,7 +33,7 @@ vi.mock('@/hooks/useStudyData', () => ({
   useFlashcards: () => ({ data: [1, 2].map(id => ({ id: String(id), subjectId: '1', topicId: '1', front: `Frente ${id}`, back: '' })) }),
   useUserQuestionStats: () => ({ data: [] }),
   useUserFlashcardReviews: () => ({ data: [] }),
-  useRecordFlashcardReview: () => ({ mutate: vi.fn() }),
+  useRecordFlashcardReview: () => ({ mutateAsync: (args: unknown) => state.review(args) }),
   useRecordAnswer: () => {
     const qc = useQueryClient();
     return useMutation({ mutationFn: (args: unknown) => state.answer(args) as Promise<StudyFeedback>,
@@ -57,6 +58,7 @@ beforeEach(() => {
   state.answer.mockReset().mockResolvedValue({ ...exhausted, correctOption: 'a', isCorrect: true,
     explanation: 'Correção da décima questão', replayed: false });
   state.reveal.mockReset().mockResolvedValue({ ...exhausted, back: 'Verso da décima utilização', replayed: false });
+  state.review.mockReset().mockResolvedValue({ ...exhausted, replayed: false });
 });
 afterEach(() => { cleanup(); qc.clear(); });
 
@@ -92,7 +94,25 @@ describe('lifetime trial interface', () => {
     expect(await screen.findByText('Verso da décima utilização')).toBeInTheDocument();
     expect(screen.queryByText('Seu teste gratuito acabou')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Bom' }));
-    expect(screen.getByText('Seu teste gratuito acabou')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Seu teste gratuito acabou')).toBeInTheDocument());
+    expect(state.reveal).toHaveBeenCalledTimes(1);
+    expect(state.review).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String), result: 'good' }));
+  });
+  it('preserves a revealed card and retries the same review when saving fails', async () => {
+    state.readAccess.mockResolvedValue({ entitled: true, used: 0, remaining: null, limit: 10 });
+    state.reveal.mockResolvedValue({ entitled: true, used: 0, remaining: null, limit: 10, back: 'Verso persistente', replayed: false });
+    state.review.mockRejectedValueOnce(new Error('Falha temporária')).mockResolvedValue({ entitled: true, used: 0, remaining: null, limit: 10, replayed: false });
+    render(<FlashcardsPage />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole('button', { name: /Direito/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Constituição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Revelar Resposta/ }));
+    expect(await screen.findByText('Verso persistente')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Bom' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bom' })).not.toBeDisabled());
+    expect(screen.getByText('Card 1 de 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Bom' }));
+    await waitFor(() => expect(screen.getByText('Card 2 de 2')).toBeInTheDocument());
+    expect(state.review.mock.calls[1][0].requestId).toBe(state.review.mock.calls[0][0].requestId);
     expect(state.reveal).toHaveBeenCalledTimes(1);
   });
   it('uses server activation and lifetime usage even if the cached profile still says approved', async () => {
@@ -110,5 +130,18 @@ describe('lifetime trial interface', () => {
     const { result } = renderHook(useAccessStatus, { wrapper: Wrapper });
     await waitFor(() => expect(result.current.reason).toBe('expired'));
     expect(result.current.canAccess).toBe(false);
+  });
+  it('distinguishes an unavailable server from an exhausted trial or expired subscription', async () => {
+    state.readAccess.mockRejectedValue(new Error('Serviço indisponível'));
+    const { result } = renderHook(useAccessStatus, { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.reason).toBe('unavailable'), { timeout: 2500 });
+    expect(result.current.isOnTrial).toBe(false);
+    expect(result.current.canAccess).toBe(false);
+  });
+  it('does not repeatedly retry a missing database setup', async () => {
+    state.readAccess.mockRejectedValue(new ApiResponseError('Serviço indisponível',503,'study_setup_required'));
+    const { result } = renderHook(useAccessStatus, { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.reason).toBe('unavailable'));
+    expect(state.readAccess).toHaveBeenCalledTimes(1);
   });
 });

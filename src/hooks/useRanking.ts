@@ -2,7 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { getAvatarUrl, AVAILABLE_AVATARS } from './useAvatar';
+import { getAvatarUrl } from './useAvatar';
+import { getStudyDate, getRankingStartDate } from '@/lib/studyDate';
 
 // Função para obter URL do avatar
 function getAvatarUrlFromName(avatar: string): string {
@@ -72,245 +73,65 @@ export function useRanking(
   period: RankingPeriod = 'weekly',
   type: RankingType = 'general'
 ) {
-  const currentYear = new Date().getFullYear();
-  const currentWeek = getWeekNumber(new Date());
-  const currentMonth = new Date().getMonth() + 1;
-
+  const today = getStudyDate();
+  const startDate = getRankingStartDate(period);
   return useQuery({
-    queryKey: ['ranking', type, courseId, period, period === 'monthly' ? currentMonth : currentWeek, currentYear],
+    queryKey: ['ranking', userId, type, courseId, period, today],
     queryFn: async (): Promise<RankingUser[]> => {
-      // Primeiro tenta buscar do ranking_global
-      let query = supabase
-        .from('ranking_global')
-        .select('*')
-        .eq('period', period)
-        .eq('week_number', currentWeek)
-        .eq('year', currentYear)
-        .order('final_score', { ascending: false })
-        .limit(100);
-
-      if (type === 'course' && courseId) {
-        query = query.eq('course_id', parseInt(courseId));
+      let { data: users, error: profilesError } = await supabase.from('public_profiles')
+        .select('id, full_name, nickname, avatar, avatar_url, course_id');
+      if (profilesError?.code === 'PGRST205') {
+        const fallback = await supabase.from('profiles').select('id, full_name, nickname, avatar, avatar_url, course_id');
+        users = fallback.data;
+        profilesError = fallback.error;
       }
-
-      const { data: rankingData, error } = await query;
-
-      // Se não tem dados no ranking_global, calcular dinamicamente
-      if (!rankingData || rankingData.length === 0) {
-        // Buscar usuários
-        let { data: users, error: usersError } = await supabase
-          .from('public_profiles')
-          .select('id, full_name, nickname, avatar, avatar_url, course_id');
-
-        // Compatibilidade apenas durante o rollout da migration. Seleciona
-        // exclusivamente os mesmos campos não sensíveis da view.
-        if (usersError?.code === 'PGRST205') {
-          const fallback = await supabase
-            .from('profiles')
-            .select('id, full_name, nickname, avatar, avatar_url, course_id');
-          users = fallback.data;
-          usersError = fallback.error;
-        }
-        
-        if (!users || users.length === 0) return [];
-
-        // Filtrar por curso se aplicável
-        let usersToProcess = users;
-        if (type === 'course' && courseId) {
-          const targetCourseId = parseInt(courseId);
-          usersToProcess = users.filter(u => u.course_id === targetCourseId);
-        } else if (type === 'general' && courseId) {
-          // Se não especificou 'course', ainda filtrar pelo curso do usuário
-          const targetCourseId = parseInt(courseId);
-          usersToProcess = users.filter(u => u.course_id === targetCourseId);
-        }
-
-        // Para cada usuário, calcular score baseado no período
-        let startDate: Date | null = null;
-        
-        if (period === 'weekly') {
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - 7);
-        } else if (period === 'monthly') {
-          startDate = new Date();
-          startDate.setMonth(startDate.getMonth() - 1);
-        }
-        // period === 'all' -> sem filtro de data
-        
-        const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
-        console.log('[useRanking] period:', period, 'startDate:', startDateStr);
-        
-        // Primeiro verificar todos os dados sem filtro
-        const { data: allProdCheck } = await supabase
-          .from('user_daily_productivity')
-          .select('user_id, productivity_date, questions_answered');
-        
-        console.log('[useRanking] all prod check:', allProdCheck?.map(p => ({ 
-          user: p.user_id?.slice(0, 8), 
-          date: p.productivity_date, 
-          q: p.questions_answered 
-        })));
-        
-        // Buscar com paginação - SEM filtro de data para pegar tudo
-        let allProdData: any[] = [];
-        let page = 0;
-        const pageSize = 1000;
-        
-        while (true) {
-          const { data: prodPage } = await supabase
-            .from('user_daily_productivity')
-            .select('*')
-            .order('productivity_date', { ascending: false })
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-          
-          if (!prodPage || prodPage.length === 0) break;
-          allProdData = [...allProdData, ...prodPage];
-          page++;
-          if (prodPage.length < pageSize) break;
-        }
-        
-        console.log('[useRanking] prodData count (all):', allProdData.length);
-
-        const ranking: RankingUser[] = [];
-        
-        // Debug: mostrar dados por usuário
-        for (const user of usersToProcess) {
-          // Filtrar dados por período
-          let userProd = allProdData.filter(p => p.user_id === user.id);
-          
-          if (startDateStr) {
-            userProd = userProd.filter(p => p.productivity_date >= startDateStr);
-          }
-          
-          console.log('[useRanking] user:', user.full_name?.slice(0,10), 'prod records:', userProd.length, 'dates:', userProd.map(p => p.productivity_date));
-          
-          // NÃO pular se não tem atividade - mostrar com 0 pontos
-          
-          // NÃO pular se não tem atividade - mostrar com 0 pontos
-          const questionsTotal = userProd.reduce((sum, p) => sum + (p.questions_answered || 0), 0);
-          const questionsCorrect = userProd.reduce((sum, p) => sum + (p.questions_correct || 0), 0);
-          const questionsWrong = userProd.reduce((sum, p) => sum + (p.questions_wrong || 0), 0);
-          const flashcardsTotal = userProd.reduce((sum, p) => sum + (p.flashcards_reviewed || 0), 0);
-          const summariesRead = userProd.reduce((sum, p) => sum + (p.summaries_read || 0), 0);
-          
-          // Fórmula fixa independente do período - apenas valoriza atividades feitas
-          const qualityScore = Math.max(0, 
-            questionsCorrect * 10 + 
-            flashcardsTotal * 8 + 
-            summariesRead * 3 - 
-            questionsWrong * 5
-          );
-          
-          // Consistência = dias únicos estudados × 3 pontos fixos
-          const daysStudied = userProd.length > 0 ? new Set(userProd.map(p => p.productivity_date)).size : 0;
-          const consistencyScore = daysStudied * 3;
-          
-          // Volume = total de atividades × 2 pontos fixos
-          const totalActivities = questionsTotal + flashcardsTotal + summariesRead;
-          const volumeScore = totalActivities * 2;
-          
-          // Score final = soma direta (sem percentuais baseados em tempo)
-          const finalScore = qualityScore + consistencyScore + volumeScore;
-          
-          // Usar nickname ou primeiro nome ou "Usuário" como fallback
-          const userName = (user.nickname && user.nickname.length > 0) 
-            ? user.nickname 
-            : (user.full_name && user.full_name.length > 0) 
-              ? user.full_name 
-              : 'Usuário';
-          
-          console.log(`[Ranking] ${userName} - period: ${period} | q: ${questionsTotal}, correct: ${questionsCorrect}, days: ${daysStudied}, totalActivities: ${totalActivities} | quality: ${qualityScore}, consistency: ${Math.round(consistencyScore)}, volume: ${Math.round(volumeScore)} | final: ${Math.round(finalScore)}`);
-          
-          ranking.push({
-            position: 0,
-            positionChange: 0,
-            userId: user.id,
-            userName: userName,
-            userAvatar: user.avatar 
-              ? getAvatarUrlFromName(user.avatar)
-              : (user.avatar_url || undefined),
-            questionsTotal,
-            questionsCorrect,
-            questionsWrong,
-            flashcardsTotal,
-            summariesRead,
-            qualityScore,
-            consistencyScore,
-            volumeScore,
-            finalScore: Math.round(finalScore),
-            accuracy: questionsTotal > 0 ? Math.round((questionsCorrect / questionsTotal) * 100) : 0,
-            isCurrentUser: user.id === userId,
-          });
-        }
-        
-        // Ordenar por score
-        ranking.sort((a, b) => b.finalScore - a.finalScore);
-        
-        // Atribuir posições
-        ranking.forEach((r, i) => r.position = i + 1);
-        
-        console.log('[useRanking] final ranking:', ranking.length, 'users');
-        console.log('[useRanking] top users:', ranking.slice(0, 3).map(r => ({ name: r.userName, score: r.finalScore })));
-        
-        return ranking;
+      if (profilesError) throw profilesError;
+      const participants = (users || []).filter(profile => !courseId || profile.course_id === Number(courseId));
+      if (!participants.length) return [];
+      const participantIds = new Set(participants.map(profile => profile.id));
+      const productivity: any[] = [];
+      for (let page = 0; ; page++) {
+        let query = supabase.from('user_daily_productivity')
+          .select('id, user_id, productivity_date, questions_answered, questions_correct, questions_wrong, flashcards_reviewed, summaries_read')
+          .lte('productivity_date', today).order('id').range(page * 1000, (page + 1) * 1000 - 1);
+        if (startDate) query = query.gte('productivity_date', startDate);
+        const { data, error } = await query;
+        if (error) throw error;
+        productivity.push(...(data || []).filter(row => participantIds.has(row.user_id)));
+        if (!data || data.length < 1000) break;
       }
-
-      // Se tem dados, usar o ranking_global
-      const ranking: RankingUser[] = (rankingData || []).map((r, index) => ({
-        position: index + 1,
-        positionChange: r.position_change || 0,
-        userId: r.user_id,
-        userName: '', // Precisa buscar do profile
-        questionsTotal: r.questions_total || 0,
-        questionsCorrect: r.questions_correct || 0,
-        questionsWrong: r.questions_wrong || 0,
-        flashcardsTotal: r.flashcards_total || 0,
-        summariesRead: r.summaries_read || 0,
-        qualityScore: r.quality_score || 0,
-        consistencyScore: r.consistency_score || 0,
-        volumeScore: r.raw_score || 0,
-        finalScore: r.final_score || 0,
-        accuracy: r.questions_total > 0 
-          ? Math.round((r.questions_correct / r.questions_total) * 100) 
-          : 0,
-        isCurrentUser: r.user_id === userId,
-      }));
-
-      // Buscar nomes dos usuários
-      if (ranking.length > 0) {
-        const userIds = ranking.map(r => r.userId);
-        let { data: profiles, error: profilesError } = await supabase
-          .from('public_profiles')
-          .select('id, full_name, nickname, avatar, avatar_url')
-          .in('id', userIds);
-
-        if (profilesError?.code === 'PGRST205') {
-          const fallback = await supabase
-            .from('profiles')
-            .select('id, full_name, nickname, avatar, avatar_url')
-            .in('id', userIds);
-          profiles = fallback.data;
-          profilesError = fallback.error;
-        }
-
-        if (profiles) {
-          ranking.forEach(r => {
-            const profile = profiles.find(p => p.id === r.userId);
-            if (profile) {
-              r.userName = profile.nickname || profile.full_name || 'Usuário';
-              r.userAvatar = profile.avatar 
-                ? getAvatarUrlFromName(profile.avatar)
-                : (profile.avatar_url || undefined);
-            }
-          });
-        }
+      const byUser = new Map<string, typeof productivity>();
+      for (const row of productivity) {
+        const rows = byUser.get(row.user_id) || [];
+        rows.push(row);
+        byUser.set(row.user_id, rows);
       }
-
-      return ranking;
+      return participants.map((profile): RankingUser => {
+        const rows = byUser.get(profile.id) || [];
+        const sum = (key: string) => rows.reduce((total, row) => total + (row[key] || 0), 0);
+        const questionsTotal = sum('questions_answered');
+        const questionsCorrect = sum('questions_correct');
+        const questionsWrong = sum('questions_wrong');
+        const flashcardsTotal = sum('flashcards_reviewed');
+        const summariesRead = sum('summaries_read');
+        const activeDays = new Set(rows.filter(row => row.questions_answered + row.flashcards_reviewed + row.summaries_read > 0)
+          .map(row => row.productivity_date)).size;
+        const qualityScore = Math.max(0, questionsCorrect * 10 + flashcardsTotal * 8 + summariesRead * 3 - questionsWrong * 5);
+        const consistencyScore = activeDays * 3;
+        const volumeScore = (questionsTotal + flashcardsTotal + summariesRead) * 2;
+        return { position: 0, positionChange: 0, userId: profile.id,
+          userName: profile.nickname || profile.full_name || 'Usuário',
+          userAvatar: profile.avatar ? getAvatarUrlFromName(profile.avatar) : profile.avatar_url || undefined,
+          questionsTotal, questionsCorrect, questionsWrong, flashcardsTotal, summariesRead,
+          qualityScore, consistencyScore, volumeScore, finalScore: qualityScore + consistencyScore + volumeScore,
+          accuracy: questionsTotal > 0 ? Math.round(questionsCorrect / questionsTotal * 100) : 0,
+          isCurrentUser: profile.id === userId };
+      }).sort((a, b) => b.finalScore - a.finalScore || a.userId.localeCompare(b.userId))
+        .map((entry, index) => ({ ...entry, position: index + 1 }));
     },
     staleTime: 1000 * 10,
     refetchOnWindowFocus: true,
-    refetchInterval: 30000, // Atualiza a cada 30 segundos
+    refetchInterval: 30000,
     enabled: !!userId,
   });
 }
